@@ -3,17 +3,19 @@
 import { useState } from "react"
 import {
   FolderOpen,
-  FileVideo,
   Settings,
   Menu,
   X,
   Cloud,
+  HardDrive,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileBrowser } from "@/components/file-browser"
-import { StrmManager } from "@/components/strm-manager"
 import { SettingsPanel } from "@/components/settings-panel"
+import { DriveManager } from "@/components/drive-manager"
+import { TaskManager } from "@/components/task-manager"
 import { cn } from "@/lib/utils"
 
 export default function Home() {
@@ -22,7 +24,8 @@ export default function Home() {
 
   const navItems = [
     { id: "browser", label: "文件浏览", icon: FolderOpen },
-    { id: "strm", label: "STRM 管理", icon: FileVideo },
+    { id: "drives", label: "网盘管理", icon: HardDrive },
+    { id: "tasks", label: "任务管理", icon: Clock },
     { id: "settings", label: "设置", icon: Settings },
   ]
 
@@ -91,9 +94,10 @@ export default function Home() {
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto p-6">
           {activeTab === "browser" && <FileBrowser />}
-          {activeTab === "strm" && <StrmManager />}
+          {activeTab === "drives" && <DriveManager />}
+          {activeTab === "tasks" && <TaskManager />}
           {activeTab === "settings" && <SettingsPanel />}
         </div>
       </main>

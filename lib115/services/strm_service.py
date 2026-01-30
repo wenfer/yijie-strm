@@ -41,10 +41,12 @@ class StrmFile:
 class StrmService:
     """STRM 服务 - 提供 STRM 文件生成和流媒体服务"""
 
-    def __init__(self, file_service: FileService = None, config: AppConfig = None):
+    def __init__(self, file_service: FileService = None, config: AppConfig = None, task_service=None, drive_service=None):
         self.config = config or default_config
         self.file_service = file_service or FileService(config=self.config)
         self._index = FileIndex()
+        self.task_service = task_service  # 可选的任务服务
+        self.drive_service = drive_service  # 可选的网盘服务（用于多账号支持）
 
     def close(self):
         """关闭服务"""
@@ -55,6 +57,299 @@ class StrmService:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+    # ==================== 任务执行 ====================
+
+    def execute_task(self, task_id: str) -> Dict:
+        """
+        执行 STRM 任务
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            执行结果字典
+        """
+        if not self.task_service:
+            return {
+                'success': False,
+                'message': 'Task service not available'
+            }
+
+        # 获取任务
+        task = self.task_service.get_task(task_id)
+        if not task:
+            return {
+                'success': False,
+                'message': f'Task not found: {task_id}'
+            }
+
+        logger.info(f"========== Starting task execution: {task_id} ({task.task_name}) ==========")
+        logger.info(f"Task config: drive_id={task.drive_id}, source_cid={task.source_cid}, output_dir={task.output_dir}")
+
+        try:
+            # 扫描源目录
+            logger.info(f"Scanning directory: {task.source_cid}")
+            current_files = self.scan_directory(task.drive_id, task.source_cid, task)
+            logger.info(f"Scan completed: found {len(current_files)} files")
+
+            # 更新任务进度：总文件数
+            self.task_service.update_task(task_id, {
+                'total_files': len(current_files),
+                'current_file_index': 0
+            })
+
+            # 获取现有记录
+            existing_records = {r['pick_code']: r for r in self.task_service.get_strm_records(task_id)}
+            logger.info(f"Found {len(existing_records)} existing STRM records")
+
+            # 统计信息
+            files_scanned = len(current_files)
+            files_added = 0
+            files_updated = 0
+            files_skipped = 0
+
+            # 处理每个文件
+            for index, file_info in enumerate(current_files, 1):
+                pick_code = file_info['pick_code']
+                file_name = file_info['file_name']
+
+                # 更新当前处理进度
+                self.task_service.update_task(task_id, {
+                    'current_file_index': index
+                })
+
+                if pick_code in existing_records:
+                    # 已存在，检查是否需要更新
+                    record = existing_records[pick_code]
+                    if self._need_update_record(record, file_info):
+                        logger.info(f"[{index}/{files_scanned}] Updating STRM: {file_name}")
+                        self._update_strm_file(task, file_info, record)
+                        files_updated += 1
+                    else:
+                        logger.debug(f"[{index}/{files_scanned}] Skipping (unchanged): {file_name}")
+                        files_skipped += 1
+                else:
+                    # 新文件，生成 STRM
+                    logger.info(f"[{index}/{files_scanned}] Creating STRM: {file_name}")
+                    self._generate_strm_for_task(task, file_info)
+                    files_added += 1
+
+            # 处理删除的文件
+            files_deleted = 0
+            if task.delete_orphans:
+                logger.info("Cleaning up orphan STRM files...")
+                current_file_ids = {f['file_id'] for f in current_files}
+                files_deleted = self.task_service.cleanup_orphan_records(task_id, list(current_file_ids))
+                logger.info(f"Deleted {files_deleted} orphan STRM files")
+
+            # 更新快照
+            logger.info("Creating file snapshot...")
+            self.task_service.create_snapshot(task_id, current_files)
+
+            # 清除进度信息
+            self.task_service.update_task(task_id, {
+                'total_files': 0,
+                'current_file_index': 0
+            })
+
+            logger.info(f"========== Task execution completed: {task_id} ==========")
+            logger.info(f"Summary: scanned={files_scanned}, added={files_added}, updated={files_updated}, deleted={files_deleted}, skipped={files_skipped}")
+
+            return {
+                'success': True,
+                'message': 'Task executed successfully',
+                'files_scanned': files_scanned,
+                'files_added': files_added,
+                'files_updated': files_updated,
+                'files_deleted': files_deleted,
+                'files_skipped': files_skipped
+            }
+
+        except Exception as e:
+            logger.error(f"========== Task execution failed: {task_id} ==========")
+            logger.error(f"Error: {e}", exc_info=True)
+
+            # 检查是否是 token 相关错误
+            error_msg = str(e).lower()
+            if 'token' in error_msg or 'auth' in error_msg or 'unauthorized' in error_msg or '401' in error_msg:
+                logger.error(f"Token error detected for drive {task.drive_id}, marking as unauthenticated")
+                if self.drive_service:
+                    self.drive_service.mark_drive_unauthenticated(task.drive_id)
+                return {
+                    'success': False,
+                    'message': f'Token expired or invalid. Please re-authenticate drive {task.drive_id}.',
+                    'token_error': True,
+                    'files_scanned': 0,
+                    'files_added': 0,
+                    'files_updated': 0,
+                    'files_deleted': 0,
+                    'files_skipped': 0
+                }
+
+            # 清除进度信息
+            self.task_service.update_task(task_id, {
+                'total_files': 0,
+                'current_file_index': 0
+            })
+
+            return {
+                'success': False,
+                'message': str(e),
+                'files_scanned': 0,
+                'files_added': 0,
+                'files_updated': 0,
+                'files_deleted': 0,
+                'files_skipped': 0
+            }
+
+    def scan_directory(self, drive_id: str, cid: str, task) -> List[Dict]:
+        """
+        扫描目录获取所有符合条件的文件
+
+        Args:
+            drive_id: 网盘 ID
+            cid: 目录 CID
+            task: 任务对象
+
+        Returns:
+            文件信息列表
+        """
+        files = []
+
+        # 获取该 drive 的 file_service
+        file_service = self._get_file_service_for_drive(drive_id)
+        if not file_service:
+            raise RuntimeError(f"Cannot get file service for drive {drive_id}. Please ensure the drive is authenticated.")
+
+        def _process_item(item):
+            if is_folder(item):
+                return
+
+            file_name = get_item_attr(item, "fn", "file_name", default="")
+
+            # 检查是否应该包含此文件
+            if not self.task_service.should_include_file(task, file_name):
+                return
+
+            pick_code = get_item_attr(item, "pc", "pick_code")
+            if not pick_code:
+                return
+
+            file_info = {
+                'file_id': get_item_attr(item, "fid", "file_id"),
+                'pick_code': pick_code,
+                'file_name': file_name,
+                'file_size': get_item_attr(item, "fs", "file_size"),
+                'file_path': item.get("_relative_path", file_name),
+                'modified_time': get_item_attr(item, "utime", "update_time")
+            }
+            files.append(file_info)
+
+        # 遍历目录
+        file_service.traverse_folder(cid, "", item_handler=_process_item)
+
+        return files
+
+    def _get_file_service_for_drive(self, drive_id: str) -> Optional[FileService]:
+        """
+        获取指定网盘的 file_service
+
+        Args:
+            drive_id: 网盘 ID
+
+        Returns:
+            FileService 实例，如果无法获取则返回 None
+        """
+        if not self.drive_service:
+            # 没有 drive_service，使用默认的 file_service
+            return self.file_service
+
+        # 从 drive_service 获取该 drive 的 client
+        client = self.drive_service.get_client(drive_id)
+        if not client:
+            logger.error(f"Cannot get client for drive {drive_id}")
+            return None
+
+        # 创建该 drive 的 file_service
+        return FileService(client, self.config)
+
+    def _generate_strm_for_task(self, task, file_info: Dict):
+        """为任务生成 STRM 文件"""
+        # 构建 STRM 文件路径
+        if task.preserve_structure:
+            rel_path = file_info['file_path']
+            strm_path = os.path.join(
+                task.output_dir,
+                os.path.splitext(rel_path)[0] + ".strm"
+            )
+        else:
+            strm_path = os.path.join(
+                task.output_dir,
+                os.path.splitext(file_info['file_name'])[0] + ".strm"
+            )
+
+        # 构建 STRM 内容
+        base_url = task.base_url or self.config.gateway.STRM_BASE_URL
+        if base_url:
+            from urllib.parse import urljoin
+            content_url = urljoin(base_url.rstrip("/") + "/", f"stream/{file_info['pick_code']}")
+        else:
+            content_url = f"strm://115/{file_info['pick_code']}"
+
+        # 写入文件
+        try:
+            os.makedirs(os.path.dirname(strm_path), exist_ok=True)
+            with open(strm_path, 'w', encoding='utf-8') as f:
+                f.write(content_url)
+            logger.debug(f"Created STRM: {strm_path}")
+        except Exception as e:
+            logger.error(f"Failed to write STRM file {strm_path}: {e}")
+            raise
+
+        # 添加记录
+        record = {
+            'file_id': file_info['file_id'],
+            'pick_code': file_info['pick_code'],
+            'file_name': file_info['file_name'],
+            'file_size': file_info.get('file_size'),
+            'file_path': file_info.get('file_path'),
+            'strm_path': strm_path,
+            'strm_content': content_url
+        }
+        self.task_service.add_strm_record(task.task_id, record)
+
+    def _update_strm_file(self, task, file_info: Dict, record: Dict):
+        """更新 STRM 文件"""
+        # 重新生成 STRM 内容
+        base_url = task.base_url or self.config.gateway.STRM_BASE_URL
+        if base_url:
+            from urllib.parse import urljoin
+            content_url = urljoin(base_url.rstrip("/") + "/", f"stream/{file_info['pick_code']}")
+        else:
+            content_url = f"strm://115/{file_info['pick_code']}"
+
+        # 更新文件
+        try:
+            with open(record['strm_path'], 'w', encoding='utf-8') as f:
+                f.write(content_url)
+            logger.debug(f"Updated STRM: {record['strm_path']}")
+        except Exception as e:
+            logger.error(f"Failed to update STRM file {record['strm_path']}: {e}")
+            raise
+
+        # 更新记录
+        self.task_service.update_strm_record(record['record_id'], {
+            'file_name': file_info['file_name'],
+            'file_size': file_info.get('file_size'),
+            'file_path': file_info.get('file_path'),
+            'strm_content': content_url
+        })
+
+    def _need_update_record(self, record: Dict, file_info: Dict) -> bool:
+        """检查记录是否需要更新"""
+        return (record['file_name'] != file_info['file_name'] or
+                record.get('file_size') != file_info.get('file_size'))
 
     # ==================== STRM 文件生成 ====================
 

@@ -64,6 +64,20 @@ class NetworkConfig:
 
 
 @dataclass
+class DatabaseConfig:
+    """数据库配置"""
+    DB_TYPE: str = "sqlite"  # sqlite 或 mysql
+    # SQLite 配置
+    DB_PATH: str = os.path.expanduser("~/.115_gateway.db")
+    # MySQL 配置
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 3306
+    DB_NAME: str = "115_gateway"
+    DB_USER: str = "root"
+    DB_PASSWORD: str = ""
+
+
+@dataclass
 class GatewayConfig:
     """STRM 网关服务配置"""
     HOST: str = "0.0.0.0"
@@ -82,6 +96,7 @@ class AppConfig:
     auth: AuthConfig = field(default_factory=AuthConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
     gateway: GatewayConfig = field(default_factory=GatewayConfig)
+    database: DatabaseConfig = field(default_factory=DatabaseConfig)
 
     # 文件操作配置
     API_FETCH_LIMIT: int = 1150
@@ -145,6 +160,15 @@ class AppConfig:
             'API_RPS_LIMIT',
             config.network.API_RPS_LIMIT
         ))
+
+        # Database 配置
+        config.database.DB_TYPE = os.environ.get('DB_TYPE', config.database.DB_TYPE)
+        config.database.DB_PATH = os.environ.get('DB_PATH', config.database.DB_PATH)
+        config.database.DB_HOST = os.environ.get('DB_HOST', config.database.DB_HOST)
+        config.database.DB_PORT = int(os.environ.get('DB_PORT', config.database.DB_PORT))
+        config.database.DB_NAME = os.environ.get('DB_NAME', config.database.DB_NAME)
+        config.database.DB_USER = os.environ.get('DB_USER', config.database.DB_USER)
+        config.database.DB_PASSWORD = os.environ.get('DB_PASSWORD', config.database.DB_PASSWORD)
 
         return config
 

@@ -29,8 +29,13 @@ class TokenManager:
         self.config = config or default_config
         self._refresh_lock = threading.Lock()
 
-    def refresh_and_get_new_token_with_info(self) -> Optional[Dict]:
-        """刷新 Token 并返回包含过期时间戳的信息"""
+    def refresh_and_get_new_token_with_info(self, allow_device_code: bool = True) -> Optional[Dict]:
+        """
+        刷新 Token 并返回包含过期时间戳的信息
+
+        Args:
+            allow_device_code: 是否允许使用设备码认证（扫码），默认 True
+        """
         with self._refresh_lock:
             logger.info(f"[TokenManager] Starting token refresh at {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -58,16 +63,19 @@ class TokenManager:
                                     f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(new_token_data['_expire_timestamp']))}")
                         return new_token_data
 
-                # 3. 回退到设备码认证（扫码）
-                logger.info("[TokenManager] Falling back to device code authentication (QR code)")
-                new_token_data = self._get_new_tokens_via_device_code()
-                if new_token_data:
-                    timestamp = int(time.time())
-                    expires_in = new_token_data.get("expires_in", 7200)
-                    new_token_data["_expire_timestamp"] = timestamp + expires_in
-                    self._save_token_to_file(new_token_data)
-                    logger.info(f"[TokenManager] New token obtained via device code")
-                    return new_token_data
+                # 3. 回退到设备码认证（扫码）- 仅在允许时执行
+                if allow_device_code:
+                    logger.info("[TokenManager] Falling back to device code authentication (QR code)")
+                    new_token_data = self._get_new_tokens_via_device_code()
+                    if new_token_data:
+                        timestamp = int(time.time())
+                        expires_in = new_token_data.get("expires_in", 7200)
+                        new_token_data["_expire_timestamp"] = timestamp + expires_in
+                        self._save_token_to_file(new_token_data)
+                        logger.info(f"[TokenManager] New token obtained via device code")
+                        return new_token_data
+                else:
+                    logger.info("[TokenManager] Device code authentication disabled, skipping")
 
                 logger.error("[TokenManager] All token refresh methods failed")
                 return None
@@ -171,8 +179,13 @@ class TokenManager:
             logger.error(f"Invalid JSON response from refresh API")
             return None
 
-    def _get_new_tokens_via_device_code(self) -> Optional[Dict]:
-        """通过设备码认证获取新 Token（扫码登录）"""
+    def _get_new_tokens_via_device_code(self, callback: Optional[Callable[[str, Dict], None]] = None) -> Optional[Dict]:
+        """
+        通过设备码认证获取新 Token（扫码登录）
+
+        Args:
+            callback: 可选的回调函数，用于通知二维码信息 callback(qrcode_url, auth_info)
+        """
         code_verifier = self._generate_code_verifier()
         code_challenge = self._generate_code_challenge(code_verifier)
 
@@ -207,19 +220,16 @@ class TokenManager:
 
         uid, qrcode_content, time_val, sign = data["uid"], data["qrcode"], data["time"], data["sign"]
 
-        # 显示二维码
-        print("\n" + "=" * 50)
-        print("请使用 115 客户端扫描下方二维码进行授权:")
-        print("=" * 50)
-        try:
-            import qrcode_terminal
-            qrcode_terminal.draw(qrcode_content)
-        except ImportError:
-            print(f"\nQR Code URL: {qrcode_content}")
-            print("\n(提示: 安装 qrcode_terminal 可显示可视化二维码)")
-            print("  pip install qrcode_terminal")
-        print("=" * 50)
-        print("等待扫码中...")
+        # 如果提供了回调函数，通知二维码信息
+        if callback:
+            callback(qrcode_content, {"uid": uid, "time": time_val, "sign": sign})
+        else:
+            # 命令行模式：打印二维码 URL
+            logger.info("=" * 50)
+            logger.info("请使用 115 客户端扫描二维码进行授权:")
+            logger.info(f"QR Code URL: {qrcode_content}")
+            logger.info("=" * 50)
+            logger.info("等待扫码中...")
 
         # 轮询等待扫码
         while True:
@@ -231,7 +241,7 @@ class TokenManager:
             if not status_data:
                 return None
             if status_data.get("data", {}).get("status") == 2:
-                print("扫码成功！正在获取 Token...")
+                logger.info("扫码成功！正在获取 Token...")
                 break
             time.sleep(5)
 
@@ -243,11 +253,118 @@ class TokenManager:
         )
 
         if token_data and token_data.get("code") == 0 and "data" in token_data:
-            print("Token 获取成功！")
+            logger.info("Token 获取成功！")
             return token_data["data"]
 
         logger.error(f"Failed to get token: {token_data}")
         return None
+
+    def get_qrcode_for_auth(self) -> Optional[Dict]:
+        """
+        获取用于认证的二维码信息（不阻塞）
+
+        Returns:
+            包含二维码 URL 和认证信息的字典，或 None
+        """
+        code_verifier = self._generate_code_verifier()
+        code_challenge = self._generate_code_challenge(code_verifier)
+
+        try:
+            response = requests.post(
+                self.config.auth.AUTH_DEVICE_CODE_URL,
+                data={
+                    "client_id": self.config.auth.get_client_id(4),
+                    "code_challenge": code_challenge,
+                    "code_challenge_method": "sha256"
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=(self.config.network.DEFAULT_CONNECT_TIMEOUT, self.config.network.DEFAULT_READ_TIMEOUT)
+            )
+            response.raise_for_status()
+            auth_data = response.json()
+
+            if auth_data.get("code") != 0 or "data" not in auth_data:
+                logger.error(f"Failed to get device code: {auth_data}")
+                return None
+
+            data = auth_data["data"]
+            if not all(k in data for k in ("uid", "qrcode", "time", "sign")):
+                logger.error("Device code response missing required fields")
+                return None
+
+            return {
+                "qrcode_url": data["qrcode"],
+                "uid": data["uid"],
+                "time": data["time"],
+                "sign": data["sign"],
+                "code_verifier": code_verifier
+            }
+        except Exception as e:
+            logger.error(f"Failed to get QR code: {e}")
+            return None
+
+    def check_qrcode_status(self, uid: str, time_val: str, sign: str) -> Optional[Dict]:
+        """
+        检查二维码扫描状态
+
+        Args:
+            uid: 设备 UID
+            time_val: 时间戳
+            sign: 签名
+
+        Returns:
+            状态信息字典，包含 status 字段（1=未扫描, 2=已扫描）
+        """
+        try:
+            response = requests.get(
+                self.config.auth.QRCODE_STATUS_URL,
+                params={"uid": uid, "time": time_val, "sign": sign},
+                timeout=(self.config.network.DEFAULT_CONNECT_TIMEOUT, self.config.network.DEFAULT_READ_TIMEOUT)
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to check QR code status: {e}")
+            return None
+
+    def exchange_token_with_device_code(self, uid: str, code_verifier: str) -> Optional[Dict]:
+        """
+        使用设备码交换 Token
+
+        Args:
+            uid: 设备 UID
+            code_verifier: PKCE code verifier
+
+        Returns:
+            Token 数据字典，或 None
+        """
+        try:
+            response = requests.post(
+                self.config.auth.DEVICE_CODE_TO_TOKEN_URL,
+                data={"uid": uid, "code_verifier": code_verifier},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=(self.config.network.DEFAULT_CONNECT_TIMEOUT, self.config.network.DEFAULT_READ_TIMEOUT)
+            )
+            response.raise_for_status()
+            token_data = response.json()
+
+            if token_data.get("code") == 0 and "data" in token_data:
+                # 保存 Token
+                timestamp = int(time.time())
+                expires_in = token_data["data"].get("expires_in", 7200)
+                token_info = {
+                    **token_data["data"],
+                    "_expire_timestamp": timestamp + expires_in
+                }
+                self._save_token_to_file(token_info)
+                logger.info("Token 获取并保存成功！")
+                return token_info
+
+            logger.error(f"Failed to exchange token: {token_data}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to exchange token: {e}")
+            return None
 
     def _generate_code_verifier(self, length: int = 128) -> str:
         """生成 PKCE code_verifier"""
@@ -274,9 +391,13 @@ class TokenWatcher:
         self._watcher_thread: Optional[threading.Thread] = None
 
     def start(self) -> bool:
-        """启动 Token 守护线程"""
-        # 初始化 Token
-        token_info = self.token_manager.refresh_and_get_new_token_with_info()
+        """
+        启动 Token 守护线程
+
+        注意：启动时不会触发扫码认证，只会尝试从文件加载或刷新已有 token
+        """
+        # 初始化 Token（不允许设备码认证，避免启动时阻塞）
+        token_info = self.token_manager.refresh_and_get_new_token_with_info(allow_device_code=False)
         if token_info:
             self._current_token = token_info["access_token"]
             self._token_expire_timestamp = token_info["_expire_timestamp"]
@@ -284,7 +405,7 @@ class TokenWatcher:
             logger.info(f"[TokenWatcher] Token initialized, expires at: "
                         f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self._token_expire_timestamp))}")
         else:
-            logger.error("[TokenWatcher] Failed to initialize token")
+            logger.warning("[TokenWatcher] No valid token found, please authenticate via API")
             return False
 
         # 启动守护线程

@@ -60,7 +60,22 @@ export function FileBrowser() {
     { id: "0", name: "根目录" }
   ])
   const [offset, setOffset] = useState(0)
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const limit = 50
+
+  const checkAuthentication = useCallback(async () => {
+    setCheckingAuth(true)
+    try {
+      const health = await api.health()
+      setAuthenticated(health.authenticated && health.token_valid)
+    } catch (error) {
+      console.error("Failed to check authentication:", error)
+      setAuthenticated(false)
+    } finally {
+      setCheckingAuth(false)
+    }
+  }, [])
 
   const loadFiles = useCallback(async (cid: string, newOffset = 0) => {
     setLoading(true)
@@ -72,6 +87,7 @@ export function FileBrowser() {
       setIsSearchMode(false)
     } catch (error) {
       console.error("Failed to load files:", error)
+      setAuthenticated(false)
     } finally {
       setLoading(false)
     }
@@ -94,8 +110,14 @@ export function FileBrowser() {
   }, [currentCid])
 
   useEffect(() => {
-    loadFiles(currentCid)
-  }, [currentCid, loadFiles])
+    checkAuthentication()
+  }, [checkAuthentication])
+
+  useEffect(() => {
+    if (authenticated) {
+      loadFiles(currentCid)
+    }
+  }, [currentCid, loadFiles, authenticated])
 
   const navigateToFolder = (item: FileItem) => {
     if (!item.is_folder) return
@@ -139,8 +161,35 @@ export function FileBrowser() {
   const totalPages = Math.ceil(total / limit)
   const currentPage = Math.floor(offset / limit) + 1
 
+  // 显示认证检查中的状态
+  if (checkingAuth) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8">
+        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+        <p className="text-muted-foreground">正在检查认证状态...</p>
+      </div>
+    )
+  }
+
+  // 显示未认证的空状态
+  if (authenticated === false) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+        <Folder className="h-16 w-16 text-muted-foreground mb-4" />
+        <h3 className="text-lg font-semibold mb-2">未连接网盘</h3>
+        <p className="text-muted-foreground mb-6 max-w-md">
+          请先在"网盘管理"中添加并认证您的 115 网盘账号，然后即可浏览文件。
+        </p>
+        <Button onClick={checkAuthentication} variant="outline">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          重新检查
+        </Button>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full -m-6">
       {/* Header */}
       <div className="flex items-center gap-2 p-4 border-b">
         <Button

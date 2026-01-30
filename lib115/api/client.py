@@ -68,7 +68,7 @@ class Client115:
         token = self.token_watcher.get_token(timeout=60)
         if not token:
             logger.error("No valid token available")
-            return None
+            raise RuntimeError("Authentication failed: No valid token available. Please re-authenticate.")
 
         for attempt in range(retry_count):
             self._rate_limiter.acquire()
@@ -326,6 +326,62 @@ class Client115:
             return False, "Some tasks failed", tasks
 
         return True, "All tasks added successfully", tasks
+
+    # ==================== 事件监听 API ====================
+
+    def get_life_behavior_list(self, type: str = "", date: str = "",
+                                limit: int = 1000, offset: int = 0) -> Optional[Dict]:
+        """获取生活操作事件列表
+
+        Args:
+            type: 事件类型 (upload_file, move_file, delete_file, new_folder, folder_rename 等)
+            date: 日期 YYYY-MM-DD
+            limit: 每页数量
+            offset: 偏移量
+
+        Returns:
+            包含事件列表的字典，格式: {"count": int, "list": [events]}
+        """
+        params = self._build_api_params({
+            "type": type,
+            "date": date,
+            "limit": limit,
+            "offset": offset
+        })
+
+        # 使用 proapi.115.com 域名
+        url = "https://proapi.115.com/android/2.0/life/behavior_detail"
+        result = self.request(url, 'GET', params)
+
+        if result and result.get("state") and isinstance(result.get("data"), dict):
+            return result["data"]
+        return None
+
+    def get_history_list(self, type: int = 0, limit: int = 1150,
+                         offset: int = 0) -> Optional[Dict]:
+        """获取历史记录列表
+
+        Args:
+            type: 历史类型 (0=全部, 2=离线下载, 3=播放视频, 4=上传, 7=接收, 8=移动)
+            limit: 每页数量
+            offset: 偏移量
+
+        Returns:
+            包含历史记录的字典，格式: {"total": int, "list": [events]}
+        """
+        params = self._build_api_params({
+            "type": type,
+            "limit": limit,
+            "offset": offset
+        })
+
+        # 使用 proapi.115.com 域名
+        url = "https://proapi.115.com/android/2.0/history"
+        result = self.request(url, 'GET', params)
+
+        if result and result.get("state") and isinstance(result.get("data"), dict):
+            return result["data"]
+        return None
 
 
 # ==================== 辅助函数 ====================
