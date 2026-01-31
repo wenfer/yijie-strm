@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { api, StrmTask, Drive } from "@/lib/api"
+import { FolderPicker } from "@/components/folder-picker"
 
 interface TaskFormDialogProps {
   open: boolean
@@ -21,6 +22,8 @@ interface TaskFormDialogProps {
 
 export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: TaskFormDialogProps) {
   const [loading, setLoading] = useState(false)
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false)
+  const [folderPath, setFolderPath] = useState("")
   const [formData, setFormData] = useState({
     task_name: "",
     drive_id: "",
@@ -39,6 +42,7 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
     watch_interval: 1800,
     delete_orphans: true,
     preserve_structure: true,
+    overwrite_strm: false,
   })
 
   useEffect(() => {
@@ -62,7 +66,9 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
         watch_interval: task.watch_interval,
         delete_orphans: task.delete_orphans,
         preserve_structure: task.preserve_structure,
+        overwrite_strm: task.overwrite_strm,
       })
+      setFolderPath("") // 编辑模式下不显示路径，只显示 CID
     } else {
       // 创建模式：使用默认值
       const currentDrive = drives.find(d => d.is_current)
@@ -70,6 +76,7 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
         ...prev,
         drive_id: currentDrive?.drive_id || drives[0]?.drive_id || "",
       }))
+      setFolderPath("")
     }
   }, [task, drives, open])
 
@@ -100,6 +107,7 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
         watch_interval: formData.watch_interval,
         delete_orphans: formData.delete_orphans,
         preserve_structure: formData.preserve_structure,
+        overwrite_strm: formData.overwrite_strm,
       }
 
       if (task) {
@@ -116,6 +124,11 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleFolderSelect = (cid: string, path: string) => {
+    setFormData({ ...formData, source_cid: cid })
+    setFolderPath(path)
   }
 
   return (
@@ -164,17 +177,41 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="source_cid">源目录 CID *</Label>
-                <Input
-                  id="source_cid"
-                  value={formData.source_cid}
-                  onChange={(e) => setFormData({ ...formData, source_cid: e.target.value })}
-                  placeholder="例如：2428417022609239936"
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  115 网盘中的文件夹 ID，可以从浏览器地址栏获取
-                </p>
+                <Label htmlFor="source_cid">源目录 *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="source_cid"
+                    value={formData.source_cid}
+                    onChange={(e) => setFormData({ ...formData, source_cid: e.target.value })}
+                    placeholder="点击右侧按钮选择文件夹"
+                    required
+                    readOnly
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setFolderPickerOpen(true)}
+                    disabled={!formData.drive_id}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                </div>
+                {folderPath && (
+                  <p className="text-xs text-muted-foreground">
+                    已选择: {folderPath}
+                  </p>
+                )}
+                {!folderPath && formData.source_cid && (
+                  <p className="text-xs text-muted-foreground">
+                    CID: {formData.source_cid}
+                  </p>
+                )}
+                {!formData.drive_id && (
+                  <p className="text-xs text-orange-500">
+                    请先选择网盘
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -374,6 +411,20 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
                   onCheckedChange={(checked) => setFormData({ ...formData, preserve_structure: checked })}
                 />
               </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="overwrite_strm">覆盖已存在的 STRM 文件</Label>
+                  <p className="text-xs text-muted-foreground">
+                    启用后每次执行都会重新生成所有 STRM 文件；禁用时仅在文件不存在时生成
+                  </p>
+                </div>
+                <Switch
+                  id="overwrite_strm"
+                  checked={formData.overwrite_strm}
+                  onCheckedChange={(checked) => setFormData({ ...formData, overwrite_strm: checked })}
+                />
+              </div>
             </div>
           </form>
         </ScrollArea>
@@ -387,6 +438,13 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <FolderPicker
+        open={folderPickerOpen}
+        onOpenChange={setFolderPickerOpen}
+        onSelect={handleFolderSelect}
+        driveId={formData.drive_id}
+      />
     </Dialog>
   )
 }
