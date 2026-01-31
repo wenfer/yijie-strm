@@ -1,70 +1,352 @@
 # 115 STRM Gateway
 
-115 网盘 STRM 文件管理系统，支持流媒体重定向、STRM 文件生成和自动化任务管理。
+支持多网盘的通用 STRM 网关系统
 
-## 项目结构
+包含next.js实现的前端项目，前端项目位于web/
+
+
+
+## 核心架构
+
+### 2.1 分层架构
 
 ```
-yijie-strm/
-├── lib115/                    # Python SDK 核心库
-│   ├── __init__.py           # 包入口
-│   ├── config.py             # 配置管理
-│   ├── auth/                 # 认证模块
-│   │   └── token_manager.py  # Token 管理（扫码认证、自动刷新）
-│   ├── api/                  # API 客户端
-│   │   └── client.py         # 115 API 封装（含事件 API）
-│   ├── db/                   # 数据库模块
-│   │   ├── base.py           # 数据库接口基类
-│   │   ├── sqlite_db.py      # SQLite 实现
-│   │   ├── mysql_db.py       # MySQL 实现
-│   │   ├── factory.py        # 数据库工厂
-│   │   └── migrations.py     # 数据库迁移工具
-│   ├── services/             # 业务服务
-│   │   ├── file_service.py   # 文件服务（遍历、缓存）
-│   │   ├── strm_service.py   # STRM 服务（生成、同步）
-│   │   ├── drive_service.py  # 网盘管理服务（多账号支持）
-│   │   ├── task_service.py   # 任务管理服务（CRUD、记录、日志）
-│   │   ├── scheduler_service.py  # 任务调度服务（定时、事件监听）
-│   │   └── event_monitor.py  # 事件监听服务（基于 115 事件 API）
-│   ├── gateway/              # HTTP 网关
-│   │   └── server.py         # REST API 服务
-│   └── utils/                # 工具函数
-│       └── helpers.py        # 辅助函数
-├── web/                       # 前端项目 (Next.js + shadcn/ui)
-│   ├── src/
-│   │   ├── app/              # Next.js App Router
-│   │   ├── components/       # React 组件
-│   │   │   ├── ui/           # shadcn/ui 基础组件
-│   │   │   ├── file-browser.tsx
-│   │   │   ├── drive-manager.tsx  # 网盘管理界面
-│   │   │   ├── task-manager.tsx   # 任务管理界面（包含 STRM 操作）
-│   │   │   └── settings-panel.tsx
-│   │   └── lib/              # 工具库
-│   │       ├── api.ts        # API 客户端
-│   │       └── utils.ts      # 工具函数
-│   └── package.json
-├── run_gateway.py             # 网关启动脚本
-├── examples.py                # 使用示例
-├── test_lib115.py             # 模块测试
-└── 115client.py               # 原始 CLI 客户端
+ # REST API 服务
+ # 业务服务
+ # 核心抽象层
+ # 网盘适配器
+ # 第三方 API
 ```
 
-## 快速开始
+### 2.2 新的目录结构
 
-### 后端服务
+```
+lib/                              # 重命名（去除 115 专属性）
+├── core/                         # 核心抽象层
+│   ├── __init__.py
+│   ├── provider.py              # CloudStorageProvider 接口
+│   ├── auth.py                  # AuthProvider 接口、TokenWatcher
+│   ├── models.py                # 统一数据模型
+│   └── exceptions.py            # 异常定义
+│
+├── providers/                    # 网盘适配器
+│   ├── __init__.py
+│   ├── factory.py               # Provider 工厂
+│   ├── base.py                  # BaseProvider（通用辅助）
+│   │
+│   ├── drive_115/               # 115 网盘适配器
+│   │   ├── __init__.py
+│   │   ├── provider.py          # Provider115（实现接口）
+│   │   ├── auth.py              # Auth115（OAuth 实现）
+│   │   ├── client.py            # 原 api/client.py（115 API 封装）
+│   │   ├── config.py            # 115 特定配置
+│   │   └── models.py            # 115 数据模型转换器
+│   │
+│   └── drive_aliyun/            # 阿里云盘适配器（示例）
+│       ├── __init__.py
+│       ├── provider.py
+│       └── auth.py
+│
+├── services/                     # 业务服务层（通用化）
+│   ├── file_service.py          # 文件服务（通过 Provider 接口）
+│   ├── strm_service.py          # STRM 服务
+│   ├── drive_service.py         # 网盘管理（支持多类型）
+│   ├── task_service.py          # 任务管理
+│   ├── scheduler_service.py     # 任务调度
+│   └── event_service.py         # 事件监听（重命名）
+│
+├── db/                           # 数据访问层（保持不变）
+│   ├── base.py
+│   ├── sqlite_db.py
+│   ├── mysql_db.py
+│   └── factory.py
+│
+├── gateway/                      # HTTP 网关（保持不变）
+│   └── server.py
+│
+├── utils/                        # 工具函数
+│   └── helpers.py
+│
+├── config.py                     # 全局配置
+└── __init__.py                   # 包入口
+```
+
+## 三、核心抽象设计
+
+### 3.1 CloudStorageProvider 接口
+
+**职责**：定义所有云存储提供商必须实现的操作
+
+**核心方法**：
+
+```python
+class CloudStorageProvider(ABC):
+    # 认证
+    def authenticate() -> AuthToken
+    def get_drive_info() -> DriveInfo
+
+    # 文件操作
+    def list_files(folder_id, limit, offset) -> (List[FileItem], total)
+    def get_file_info(file_id) -> FileItem
+    def search_files(keyword, folder_id) -> List[FileItem]
+    def get_download_url(file_id) -> DownloadInfo
+
+    # 文件管理（可选）
+    def create_folder(parent_id, name) -> FileItem
+    def rename(file_id, new_name) -> FileItem
+    def move(file_id, target_folder_id) -> FileItem
+    def delete(file_id) -> bool
+
+    # 事件监听（可选）
+    def supports_events() -> bool
+    def get_events(from_event_id, limit) -> List[FileEvent]
+```
+
+### 3.2 AuthProvider 接口
+
+**职责**：定义统一的认证流程
+
+**核心方法**：
+
+```python
+class AuthProvider(ABC):
+    # 二维码认证
+    def get_qrcode() -> QRCodeAuth
+    def check_qrcode_status(session_id) -> int
+    def exchange_token(session_id, **kwargs) -> AuthToken
+
+    # 令牌管理
+    def refresh_token(token) -> AuthToken
+    def save_token(token, file_path)
+    def load_token(file_path) -> AuthToken
+    def validate_token(token) -> bool
+
+    # 智能刷新
+    def auto_refresh_token(file_path) -> AuthToken
+```
+
+### 3.3 统一数据模型
+
+**核心模型**：
+
+- `FileItem`: 统一文件表示
+  - `id`: 文件 ID（通用）
+  - `download_id`: 下载标识符（如 115 的 pick_code）
+  - `name`, `type`, `size`, `parent_id`
+  - `raw_data`: 保存原始数据
+
+- `FileEvent`: 文件变更事件
+  - `event_id`, `event_type`, `file_id`, `timestamp`
+
+- `AuthToken`: 认证令牌
+  - `access_token`, `refresh_token`, `expires_at`
+
+- `DriveInfo`: 网盘信息
+  - `drive_id`, `drive_type`, `name`, `user_id`
+
+- `DownloadInfo`: 下载信息
+  - `url`, `expires_at`, `headers`
+
+## 四、115 网盘适配实现
+
+### 4.1 Provider115 实现
+
+**位置**：`lib/providers/drive_115/provider.py`
+
+**实现要点**：
+
+```python
+class Provider115(BaseProvider):
+    provider_type = "115"
+
+    def __init__(self, token_file: str):
+        auth_provider = Auth115()
+        super().__init__(auth_provider, token_file)
+        self.client = Client115(self.auth_provider, token_file)
+
+    def list_files(self, folder_id, limit, offset):
+        # 调用 Client115.list_files()
+        # 将 115 数据格式转换为 FileItem
+        items_115 = self.client.list_files(folder_id, limit, offset)
+        return [self._convert_to_file_item(item) for item in items_115]
+
+    def get_download_url(self, file_id):
+        # 115 使用 pick_code
+        # FileItem.download_id 保存 pick_code
+        url = self.client.get_download_url(file_id)
+        return DownloadInfo(url=url)
+
+    def _convert_to_file_item(self, item_115) -> FileItem:
+        # 115 格式 -> FileItem
+        return FileItem(
+            id=item_115['fid'],
+            name=item_115['fn'],
+            type=self._map_file_type(item_115['fc']),
+            size=item_115.get('fs', 0),
+            parent_id=item_115['cid'],
+            download_id=item_115.get('pc'),  # pick_code
+            raw_data=item_115
+        )
+```
+
+### 4.2 Auth115 实现
+
+**位置**：`lib/providers/drive_115/auth.py`
+
+**实现要点**：
+
+```python
+class Auth115(AuthProvider):
+    def get_qrcode(self) -> QRCodeAuth:
+        # 调用 115 OAuth 设备码 API
+        # 返回二维码 URL 和会话信息
+        pass
+
+    def check_qrcode_status(self, session_id) -> int:
+        # 轮询扫码状态
+        pass
+
+    def exchange_token(self, session_id, **kwargs) -> AuthToken:
+        # 使用 PKCE 交换 Token
+        # 将 115 Token 格式转换为 AuthToken
+        pass
+
+    def refresh_token(self, token) -> AuthToken:
+        # 调用 115 刷新 API
+        pass
+```
+
+### 4.3 文件映射关系
+
+| 原文件 | 新位置 | 说明 |
+|--------|--------|------|
+| `lib/providers/drive_115/client.py` | 115 API 客户端 |
+| `lib/providers/drive_115/auth.py` | 115 认证实现 |
+| `lib/providers/drive_115/config.py` + `lib/config.py` | 分离 115 特定配置 |
+| `lib/providers/drive_115/provider.py` | 集成到 Provider |
+
+## 五、服务层
+
+### 5.1 DriveService
+
+
+```python
+class DriveService:
+    def add_drive(self, name: str, drive_type: str = "115"):
+        # drive_type 支持 "115", "aliyun" 等
+        drive = Drive(
+            drive_id=f"{drive_type}_{timestamp}",
+            drive_type=drive_type,  # 保存类型
+            name=name,
+            token_file=self._get_token_file_path(drive_id)
+        )
+        self.db.save_drive(drive)
+
+    def get_provider(self, drive_id: str) -> CloudStorageProvider:
+        # 通过工厂创建 Provider
+        drive = self.db.get_drive(drive_id)
+        return provider_factory.create(
+            provider_type=drive.drive_type,
+            token_file=drive.token_file
+        )
+```
+
+### 5.2 StrmService
+
+```python
+class StrmService:
+    def execute_task(self, task: Task):
+        # 通过 DriveService 获取 Provider
+        provider = self.drive_service.get_provider(task.drive_id)
+
+        # 使用 Provider 接口（不依赖 115）
+        items, _ = provider.list_files(task.source_cid)
+
+        for item in items:
+            if item.is_video:
+                # 生成 STRM 文件
+                strm_url = self._build_strm_url(
+                    item.download_id,  # 通用字段
+                    task.base_url
+                )
+```
+
+### 5.3 FileService
+
+
+```python
+class FileService:
+    def __init__(self, provider: CloudStorageProvider):
+        self.provider = provider  # 依赖注入
+
+    def traverse_folder(self, folder_id: str):
+        # 使用 Provider 接口
+        items, _ = self.provider.list_files(folder_id)
+        # 递归遍历逻辑保持不变
+```
+
+## 六、添加新网盘的步骤
+
+### 示例：添加阿里云盘支持
+
+#### 步骤 1：创建 Provider 目录
 
 ```bash
-# 安装依赖
-pip install requests
-
-# 可选：安装 MySQL 支持（如果使用 MySQL 数据库）
-pip install pymysql
-
-# 启动网关服务（无需预先认证）
-python run_gateway.py --port 8115
-
-# 服务启动后，通过前端界面或 API 进行认证
+mkdir -p lib/providers/drive_aliyun
 ```
+
+#### 步骤 2：实现 AuthProvider
+
+```python
+# lib/providers/drive_aliyun/auth.py
+class AuthAliyun(AuthProvider):
+    def get_qrcode(self) -> QRCodeAuth:
+        # 调用阿里云盘认证 API
+        pass
+
+    def refresh_token(self, token) -> AuthToken:
+        # 阿里云盘刷新逻辑
+        pass
+```
+
+#### 步骤 3：实现 CloudStorageProvider
+
+```python
+# lib/providers/drive_aliyun/provider.py
+class ProviderAliyun(BaseProvider):
+    provider_type = "aliyun"
+
+    def list_files(self, folder_id, limit, offset):
+        # 调用阿里云盘 API
+        # 转换为 FileItem
+        pass
+
+    def get_download_url(self, file_id):
+        # 获取阿里云盘下载链接
+        pass
+```
+
+#### 步骤 4：注册 Provider
+
+```python
+# lib/providers/drive_aliyun/__init__.py
+from .provider import ProviderAliyun
+from ..factory import provider_factory
+
+# 注册到工厂
+provider_factory.register("aliyun", ProviderAliyun)
+```
+
+#### 步骤 5：使用
+
+```bash
+# 添加阿里云盘网盘
+curl -X POST "http://localhost:8115/api/drives" \
+  -d '{"name": "我的阿里云盘", "drive_type": "aliyun"}'
+
+# 后续操作与 115 网盘完全一致
+```
+
 
 ### 前端界面
 
@@ -105,18 +387,27 @@ npm run dev
 
 ### 文件操作
 
+**注意**: 所有文件操作 API 都支持可选的 `drive_id` 查询参数，用于指定操作的网盘。如果不指定，则使用当前网盘。
+
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/api/list` | GET | 文件列表 |
-| `/api/search` | GET | 文件搜索 |
-| `/api/info` | GET | 文件信息 |
-| `/api/download` | GET | 获取下载链接 |
+| `/api/list?drive_id=xxx` | GET | 文件列表（drive_id 可选） |
+| `/api/search?drive_id=xxx` | GET | 文件搜索（drive_id 可选） |
+| `/api/info?drive_id=xxx` | GET | 文件信息（drive_id 可选） |
+| `/api/download?drive_id=xxx` | GET | 获取下载链接（drive_id 可选） |
+| `/stream/{pick_code}?drive_id=xxx` | GET | 流媒体重定向（drive_id 可选） |
 
 ### 任务管理
 
 **注意**: STRM 文件的生成和同步现在通过任务管理系统完成。创建任务后可以手动执行（一次性操作）或启用调度器（自动化操作）。
 
 **文件监听**: 系统支持基于 115 事件 API 的实时文件监听，无需轮询即可检测文件变化。当启用 `watch_enabled` 时，系统会监听上传、移动、删除、重命名等文件系统事件，并自动触发 STRM 同步。
+
+**源目录选择**: Web 界面提供可视化的文件夹选择器，用户可以通过浏览网盘目录来选择源文件夹，无需手动输入 CID。选择器支持：
+- 面包屑导航，快速返回上级目录
+- 实时加载子文件夹
+- 显示当前选择的完整路径
+- 自动过滤只显示文件夹
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
@@ -139,30 +430,7 @@ npm run dev
 | `/api/scheduler/start` | POST | 启动调度器 |
 | `/api/scheduler/stop` | POST | 停止调度器 |
 
-## 使用示例
 
-### Python SDK
-
-```python
-from lib115 import Client115, StrmService
-
-# 列出文件
-with Client115() as client:
-    items, total = client.list_files('0')
-    for item in items:
-        print(item['fn'])
-
-# 获取下载链接
-url = client.get_download_url('pick_code_here')
-
-# 生成 STRM 文件
-strm_service = StrmService()
-strm_service.generate_strm_files(
-    root_cid='folder_cid',
-    output_dir='/path/to/output',
-    base_url='http://localhost:8115'
-)
-```
 
 ### HTTP API
 
@@ -210,7 +478,8 @@ curl -X POST "http://localhost:8115/api/tasks" \
     "watch_enabled": true,
     "watch_interval": 1800,
     "delete_orphans": true,
-    "preserve_structure": true
+    "preserve_structure": true,
+    "overwrite_strm": false
   }'
 
 # 获取任务列表
@@ -260,7 +529,6 @@ curl -X POST "http://localhost:8115/api/scheduler/stop"
 |------|--------|------|
 | `GATEWAY_HOST` | `0.0.0.0` | 监听地址 |
 | `GATEWAY_PORT` | `8115` | 监听端口 |
-| `TOKEN_FILE_PATH` | `~/.115_token.json` | Token 存储路径 |
 | `STRM_BASE_URL` | 空 | STRM 文件基础 URL |
 | `CACHE_TTL` | `3600` | 下载链接缓存时间（秒） |
 | `DB_TYPE` | `sqlite` | 数据库类型（sqlite/mysql） |
@@ -270,6 +538,10 @@ curl -X POST "http://localhost:8115/api/scheduler/stop"
 | `DB_NAME` | `115_gateway` | MySQL 数据库名 |
 | `DB_USER` | `root` | MySQL 用户名 |
 | `DB_PASSWORD` | 空 | MySQL 密码 |
+
+**注意**:
+- 旧版本的 `TOKEN_FILE_PATH` 环境变量已废弃，现在每个网盘使用独立的 Token 文件（`~/.115_token_{drive_id}.json`）
+- Token 文件路径由系统自动管理，存储在 drives 表中
 
 ## 依赖管理
 
@@ -301,8 +573,8 @@ pip install pymysql
 4. 显示二维码供用户扫描
 5. 前端轮询 `/api/auth/status` 检查扫码状态
 6. 扫码成功后调用 `/api/auth/exchange` 完成认证
-7. 后端初始化 115 客户端，所有 API 端点可用
-8. Token 保存到 `~/.115_token.json`，下次启动自动加载
+7. Token 保存到该网盘的 Token 文件（`~/.115_token_{drive_id}.json`）
+8. 后续访问该网盘时自动加载并验证 Token
 
 ### API 认证流程
 1. 调用 `GET /api/auth/qrcode` 获取二维码 URL 和认证参数
@@ -332,7 +604,8 @@ pip install pymysql
    ```json
    {
      "uid": "xxx",
-     "code_verifier": "xxx"
+     "code_verifier": "xxx",
+     "drive_id": "115_1234567890"  // 可选，指定为哪个网盘认证
    }
    ```
 
@@ -341,12 +614,13 @@ pip install pymysql
    {
      "success": true,
      "message": "认证成功",
+     "drive_id": "115_1234567890",
      "access_token": "xxx",
      "expires_in": 7200
    }
    ```
 
-6. 后续所有 API 请求自动使用已保存的 Token
+6. Token 保存到该网盘的 Token 文件，后续访问该网盘时自动使用
 
 ### 健康检查
 使用 `/health` 端点检查服务状态和认证状态：
@@ -359,31 +633,11 @@ curl http://localhost:8115/health
 {
   "status": "ok",
   "timestamp": 1234567890,
-  "authenticated": true,  // 是否已认证
-  "token_valid": true     // Token 是否有效
+  "authenticated": true,     // 当前网盘是否已认证
+  "current_drive": "115_1234567890"  // 当前网盘 ID
 }
 ```
 
-### 命令行认证（仅限 115client.py）
-- 原始 CLI 客户端 `115client.py` 仍支持命令行二维码显示
-- 需要安装 `qrcode_terminal` 包（可选）
-- 新的 lib115 SDK 不再依赖 qrcode_terminal
-
-## 开发命令
-
-```bash
-# 运行测试
-python test_lib115.py
-
-# 启动后端（调试模式）
-python run_gateway.py --debug
-
-# 启动前端开发服务器
-cd web && npm run dev
-
-# 构建前端
-cd web && npm run build
-```
 
 ## 数据库配置
 
@@ -456,13 +710,24 @@ DB_TYPE=mysql DB_HOST=localhost DB_NAME=115_gateway DB_USER=root DB_PASSWORD=you
 
 ## 网盘管理
 
-### 多账号支持
+### 多账号架构
 
-系统支持管理多个 115 网盘账号，每个账号独立认证和存储：
+系统采用**按需客户端池架构**，支持管理多个 115 网盘账号：
 
-- 每个网盘账号有独立的 Token 文件
-- 可以在不同账号之间快速切换
-- 支持为每个账号设置自定义名称
+- **独立认证和存储**：每个网盘账号有独立的 Token 文件（`~/.115_token_{drive_id}.json`）
+- **客户端池机制**：GatewayServer 维护一个客户端池，为每个 drive 缓存 `Client115`、`FileService` 和 `StrmService` 实例
+- **按需创建和缓存**：首次访问某个网盘时创建服务实例并缓存，后续请求直接使用缓存
+- **自动 Token 验证**：每次访问前验证 Token 是否有效，失效时自动清理缓存并标记为未认证
+- **任务独立执行**：每个任务使用自己的 drive_id 获取对应的客户端，互不干扰
+- **无缝切换**：切换当前网盘时无需重启调度器或重建客户端
+
+### 架构优势
+
+1. **真正的多账号隔离**：不同网盘的操作完全独立，避免相互影响
+2. **性能优化**：客户端池减少了重复创建客户端的开销
+3. **资源管理**：Token 失效时自动清理，避免资源泄漏
+4. **灵活性**：API 支持显式指定 drive_id，也支持使用"当前网盘"概念
+5. **调度器优化**：调度器为每个任务按需创建服务，无需持有全局服务实例
 
 ### Web 界面管理
 
@@ -535,11 +800,155 @@ curl -X POST http://localhost:8115/api/drives/remove \
 
 ## 技术栈
 
-- **后端**: Python 3.9+, requests, sqlite3, pymysql (可选)
+- **后端**: Python 3.9+, requests, schedule, sqlite3, pymysql (可选)
 - **前端**: Next.js 14, React 18, TypeScript
 - **UI**: shadcn/ui, Tailwind CSS, Radix UI
 - **数据库**: SQLite (默认) / MySQL (可选)
 - **API**: 115 Open API (OAuth 2.0)
+
+## 架构设计
+
+### 多账号客户端池架构
+
+系统采用**客户端池（Client Pool）**架构来支持多账号管理：
+
+#### GatewayServer 架构
+
+```python
+class GatewayServer:
+    """STRM 网关服务器"""
+
+    def __init__(self, config: AppConfig = None):
+        self.config = config
+        self.drive_service = DriveService(config)      # 网盘管理服务
+        self.task_service = TaskService(db)            # 任务管理服务
+        self.scheduler_service = SchedulerService(     # 调度服务
+            task_service,
+            drive_service,
+            config
+        )
+
+        # 客户端池：缓存每个 drive 的服务实例
+        self._client_pool: Dict[str, Dict] = {}
+        self._client_pool_lock = threading.Lock()
+
+    def get_services_for_drive(self, drive_id: str) -> Optional[Dict]:
+        """
+        获取指定网盘的服务实例（带缓存）
+
+        Returns:
+            {
+                "client": Client115,
+                "file_service": FileService,
+                "strm_service": StrmService
+            }
+        """
+        # 检查缓存
+        if drive_id in self._client_pool:
+            cached = self._client_pool[drive_id]
+            # 验证 token 是否仍然有效
+            if cached["client"].token_watcher.is_token_valid():
+                return cached
+            else:
+                # Token 已过期，清理缓存
+                cached["client"].close()
+                del self._client_pool[drive_id]
+
+        # 创建新的服务实例
+        client = self.drive_service.get_client(drive_id)
+        file_service = FileService(client, self.config)
+        strm_service = StrmService(file_service, self.config, ...)
+
+        # 缓存起来
+        services = {"client": client, "file_service": file_service, "strm_service": strm_service}
+        self._client_pool[drive_id] = services
+        return services
+```
+
+#### SchedulerService 架构
+
+```python
+class SchedulerService:
+    """任务调度服务"""
+
+    def __init__(self, task_service: TaskService, drive_service=None, config=None):
+        self.task_service = task_service
+        self.drive_service = drive_service  # 用于获取客户端
+        self.config = config
+
+    def _get_strm_service_for_task(self, task: StrmTask):
+        """为每个任务按需创建服务实例"""
+        client = self.drive_service.get_client(task.drive_id)
+        file_service = FileService(client, self.config)
+        strm_service = StrmService(file_service, self.config, ...)
+        return strm_service, client
+
+    def _execute_task_wrapper(self, task_id: str):
+        """执行任务"""
+        task = self.task_service.get_task(task_id)
+
+        # 获取该任务专用的服务实例
+        strm_service, client = self._get_strm_service_for_task(task)
+
+        try:
+            # 执行任务
+            result = strm_service.execute_task(task_id)
+        finally:
+            # 关闭客户端
+            client.close()
+```
+
+#### 工作流程
+
+1. **API 请求处理**:
+   - 用户发起请求（如 `/api/list?drive_id=xxx`）
+   - Handler 调用 `_require_auth(drive_id)` 验证认证状态
+   - Handler 调用 `server_instance.get_services_for_drive(drive_id)` 获取服务
+   - 使用返回的服务实例执行操作
+
+2. **任务调度执行**:
+   - 调度器触发任务执行
+   - `_execute_task_wrapper` 从任务获取 `drive_id`
+   - 调用 `_get_strm_service_for_task` 创建临时服务实例
+   - 执行任务后关闭客户端
+
+3. **客户端池管理**:
+   - 首次访问某个 drive 时创建并缓存服务实例
+   - 后续访问直接使用缓存，提高性能
+   - Token 失效时自动清理缓存
+   - 服务停止时清空整个客户端池
+
+#### 架构优势
+
+1. **性能优化**: 客户端池避免了重复创建客户端的开销
+2. **资源隔离**: 每个 drive 的客户端完全独立，互不干扰
+3. **自动管理**: Token 失效时自动清理，避免资源泄漏
+4. **灵活扩展**: 支持显式指定 drive_id，也支持使用"当前网盘"
+5. **并发安全**: 使用锁保护客户端池的并发访问
+
+### 服务依赖关系
+
+```
+GatewayServer
+├── DriveService (数据库存储，管理多个 drive)
+│   └── get_client(drive_id) -> Client115
+├── TaskService (数据库存储，管理任务)
+├── SchedulerService (调度任务执行)
+│   ├── task_service
+│   ├── drive_service (用于获取客户端)
+│   └── _get_strm_service_for_task() -> (StrmService, Client115)
+└── _client_pool (缓存每个 drive 的服务实例)
+    └── {drive_id: {client, file_service, strm_service}}
+
+每个任务执行时：
+Task -> SchedulerService -> DriveService.get_client(drive_id) -> Client115
+                          -> FileService(client)
+                          -> StrmService(file_service)
+                          -> execute_task()
+                          -> client.close()
+```
+
+
 
 ## 事件监听机制
 
@@ -650,5 +1059,62 @@ curl -X POST "http://localhost:8115/api/tasks" \
    - 每个 drive 共享一个事件监听器，多个任务监听同一个 drive 时不会重复调用 API
    - 建议合理设置 `watch_interval`，避免过于频繁的 API 调用
 
+
+## 验证改动
+可以通过build的方式验证改动是否能通过编译校验，但不要直接启动开发服务
+
+## 日志格式
+所有日志输出都包含文件名和行号，格式为：
+```
+%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s
+```
+
+
 ## 文档更新
-新增文件，或修改文件定义，或模块职责变更都需要重新更新此文档
+新增文件，或修改文件定义，或模块职责变更都需要重新更新此文档，不轻易生成新的md文档
+
+## 改动日志
+
+### 2026-01-31: 多账号客户端池架构改造
+
+#### 核心改动
+
+1. **GatewayServer 架构重构**:
+   - 移除全局客户端实例（`self.client`, `self.file_service`, `self.strm_service`）
+   - 新增客户端池 `_client_pool` 用于缓存每个 drive 的服务实例
+   - 新增 `get_services_for_drive(drive_id)` 方法，按需获取或创建服务
+   - 新增 `_get_current_drive_id()` 方法，获取当前网盘 ID
+   - 修改 `_require_auth(drive_id)` 方法，支持验证指定网盘的认证状态
+   - 删除 `initialize_client()` 和 `initialize_client_for_drive()` 方法
+   - 更新 `stop()` 方法，新增 `clear_client_pool()` 调用
+
+2. **SchedulerService 架构重构**:
+   - 移除 `strm_service` 依赖，改为接受 `drive_service` 和 `config` 参数
+   - 新增 `_get_strm_service_for_task(task)` 方法，为每个任务按需创建服务
+   - 修改 `_execute_task_wrapper()` 方法，按需创建服务并在执行后关闭客户端
+   - 修改 `start_watch()` 方法，直接使用 `drive_service.get_client()`
+
+3. **API 端点更新**:
+   - 所有文件操作 API 支持可选的 `drive_id` 查询参数
+   - `/stream/{pick_code}?drive_id=xxx` 支持指定网盘
+   - `/api/list?drive_id=xxx` 支持指定网盘
+   - `/api/search?drive_id=xxx` 支持指定网盘
+   - `/api/info?drive_id=xxx` 支持指定网盘
+   - `/api/download?drive_id=xxx` 支持指定网盘
+   - `/api/auth/exchange` 支持 `drive_id` 参数指定认证目标
+   - `/health` 返回 `current_drive` 字段
+
+#### 架构优势
+
+1. **真正的多账号支持**: 每个网盘独立认证和操作，互不干扰
+2. **性能优化**: 客户端池缓存服务实例，避免重复创建
+3. **简化切换逻辑**: 切换网盘不再需要重启调度器
+4. **资源管理**: Token 失效时自动清理，任务执行后及时关闭客户端
+5. **容错性**: Token 过期时自动标记为未认证，不影响其他网盘
+
+#### 兼容性说明
+
+- 旧版本的单网盘模式仍然兼容（通过"当前网盘"概念）
+- API 的 `drive_id` 参数可选，不指定时使用当前网盘
+- 旧版本的 `TOKEN_FILE_PATH` 环境变量已废弃，但不影响现有 Token 文件的读取
+
