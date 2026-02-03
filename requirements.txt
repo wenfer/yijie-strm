@@ -1,0 +1,22 @@
+
+# FastAPI 核心
+fastapi>=0.128.0
+uvicorn[standard]>=0.40.0
+pydantic>=2.12.5
+pydantic-settings>=2.12.0
+
+# Tortoise ORM
+tortoise-orm[asyncpg]>=0.25.4
+
+# 115 网盘客户端
+p115client>=0.0.8.3.3
+p115nano302>=0.1.3.1
+
+# 任务调度
+apscheduler>=3.10.0
+
+# 异步支持
+aiofiles>=25.1.0
+
+# 工具库
+python-multipart>=0.0.22

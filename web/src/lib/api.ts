@@ -1,5 +1,5 @@
 /**
- * 115 STRM Gateway API 客户端
+ * Yijie STRM Gateway API 客户端
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8115'
@@ -48,8 +48,8 @@ export interface Drive {
   token_file: string
   created_at: number
   last_used: number
-  is_authenticated: boolean
   is_current: boolean
+  is_authenticated?: boolean
 }
 
 export interface DrivesListResponse {
@@ -62,7 +62,7 @@ export interface FileItem {
   name: string
   size: number
   pick_code: string
-  is_folder: boolean
+  is_dir: boolean
   parent_id: string
 }
 
@@ -161,13 +161,17 @@ export async function exchangeToken(
 export async function listFiles(
   cid: string = '0',
   limit: number = 100,
-  offset: number = 0
+  offset: number = 0,
+  drive_id?: string
 ): Promise<FileListResponse> {
   const params = new URLSearchParams({
     cid,
     limit: limit.toString(),
     offset: offset.toString(),
   })
+  if (drive_id) {
+    params.append('drive_id', drive_id)
+  }
   return request<FileListResponse>(`/api/list?${params}`)
 }
 
@@ -208,8 +212,8 @@ export function getStreamUrl(pick_code: string): string {
 /**
  * 获取网盘列表
  */
-export async function listDrives(): Promise<DrivesListResponse> {
-  return request<DrivesListResponse>('/api/drives')
+export async function listDrives(): Promise<{ success: boolean; drives: Drive[] }> {
+  return request('/api/drives')
 }
 
 /**
@@ -226,9 +230,8 @@ export async function addDrive(name: string, drive_type: string = '115'): Promis
  * 删除网盘
  */
 export async function removeDrive(drive_id: string): Promise<{ success: boolean; message: string }> {
-  return request('/api/drives/remove', {
-    method: 'POST',
-    body: JSON.stringify({ drive_id }),
+  return request(`/api/drives/${drive_id}`, {
+    method: 'DELETE',
   })
 }
 
@@ -256,8 +259,8 @@ export async function updateDrive(drive_id: string, name: string): Promise<{ suc
  * 任务管理类型定义
  */
 export interface StrmTask {
-  task_id: string
-  task_name: string
+  id: string
+  name: string
   drive_id: string
   source_cid: string
   output_dir: string
@@ -274,36 +277,36 @@ export interface StrmTask {
   preserve_structure: boolean
   overwrite_strm: boolean
   status: string
-  last_run_time?: number
+  last_run_time?: string
   last_run_status?: string
   last_run_message?: string
-  next_run_time?: number
+  next_run_time?: string
   total_runs: number
   total_files_generated: number
   total_files: number
   current_file_index: number
-  created_at: number
-  updated_at: number
+  created_at?: string
+  updated_at?: string
 }
 
 export interface TaskStatistics {
-  task_id: string
-  task_name: string
+  id: string
+  name: string
   status: string
   total_runs: number
   total_files_generated: number
   active_records: number
-  last_run_time?: number
+  last_run_time?: string
   last_run_status?: string
   last_run_message?: string
   last_log?: TaskLog
 }
 
 export interface TaskLog {
-  log_id: string
+  id: string
   task_id: string
-  start_time: number
-  end_time?: number
+  start_time?: string
+  end_time?: string
   duration?: number
   status: string
   message?: string
@@ -316,18 +319,18 @@ export interface TaskLog {
 }
 
 export interface StrmRecord {
-  record_id: string
+  id: string
   task_id: string
   file_id: string
-  pick_code: string
+  pick_code?: string
   file_name: string
   file_size?: number
   file_path?: string
   strm_path: string
   strm_content: string
   status: string
-  created_at: number
-  updated_at: number
+  created_at?: string
+  updated_at?: string
 }
 
 export interface SchedulerStatus {
@@ -358,15 +361,15 @@ export async function createTask(taskData: Partial<StrmTask>): Promise<{ success
 /**
  * 获取任务详情
  */
-export async function getTask(task_id: string): Promise<{ success: boolean; task: StrmTask }> {
-  return request(`/api/tasks/${task_id}`)
+export async function getTask(id: string): Promise<{ success: boolean; task: StrmTask }> {
+  return request(`/api/tasks/${id}`)
 }
 
 /**
  * 更新任务
  */
-export async function updateTask(task_id: string, updates: Partial<StrmTask>): Promise<{ success: boolean; message: string }> {
-  return request(`/api/tasks/${task_id}`, {
+export async function updateTask(id: string, updates: Partial<StrmTask>): Promise<{ success: boolean; message: string }> {
+  return request(`/api/tasks/${id}`, {
     method: 'POST',
     body: JSON.stringify(updates),
   })
@@ -375,8 +378,8 @@ export async function updateTask(task_id: string, updates: Partial<StrmTask>): P
 /**
  * 删除任务
  */
-export async function deleteTask(task_id: string): Promise<{ success: boolean; message: string }> {
-  return request(`/api/tasks/${task_id}/delete`, {
+export async function deleteTask(id: string): Promise<{ success: boolean; message: string }> {
+  return request(`/api/tasks/${id}/delete`, {
     method: 'POST',
   })
 }
@@ -384,8 +387,8 @@ export async function deleteTask(task_id: string): Promise<{ success: boolean; m
 /**
  * 手动执行任务
  */
-export async function executeTask(task_id: string, force: boolean = false): Promise<{ success: boolean; message: string }> {
-  return request(`/api/tasks/${task_id}/execute`, {
+export async function executeTask(id: string, force: boolean = false): Promise<{ success: boolean; message: string }> {
+  return request(`/api/tasks/${id}/execute`, {
     method: 'POST',
     body: JSON.stringify({ force }),
   })
@@ -394,30 +397,71 @@ export async function executeTask(task_id: string, force: boolean = false): Prom
 /**
  * 获取任务状态
  */
-export async function getTaskStatus(task_id: string): Promise<{ success: boolean; status: string; last_run_time?: number; last_run_status?: string; last_run_message?: string; next_run_time?: number }> {
-  return request(`/api/tasks/${task_id}/status`)
+export async function getTaskStatus(id: string): Promise<{ success: boolean; status: string; last_run_time?: string; last_run_status?: string; last_run_message?: string; next_run_time?: string }> {
+  return request(`/api/tasks/${id}/status`)
 }
 
 /**
  * 获取任务统计
  */
-export async function getTaskStatistics(task_id: string): Promise<{ success: boolean; statistics: TaskStatistics }> {
-  return request(`/api/tasks/${task_id}/statistics`)
+export async function getTaskStatistics(id: string): Promise<{ success: boolean; statistics: TaskStatistics }> {
+  return request(`/api/tasks/${id}/statistics`)
 }
 
 /**
  * 获取任务日志
  */
-export async function getTaskLogs(task_id: string, limit: number = 50): Promise<{ success: boolean; logs: TaskLog[] }> {
+export async function getTaskLogs(id: string, limit: number = 50): Promise<{ success: boolean; logs: TaskLog[] }> {
   const params = new URLSearchParams({ limit: limit.toString() })
-  return request(`/api/tasks/${task_id}/logs?${params}`)
+  return request(`/api/tasks/${id}/logs?${params}`)
 }
 
 /**
  * 获取任务的 STRM 记录
  */
-export async function getTaskRecords(task_id: string): Promise<{ success: boolean; records: StrmRecord[] }> {
-  return request(`/api/tasks/${task_id}/records`)
+export async function getTaskRecords(
+  task_id: string,
+  keyword?: string,
+  status?: string,
+  limit: number = 1000,
+  offset: number = 0
+): Promise<{ success: boolean; records: StrmRecord[]; total: number; limit: number; offset: number }> {
+  const params = new URLSearchParams({
+    limit: limit.toString(),
+    offset: offset.toString(),
+  })
+  if (keyword) params.append('keyword', keyword)
+  if (status) params.append('status', status)
+  return request(`/api/tasks/${task_id}/records?${params}`)
+}
+
+/**
+ * 删除单个 STRM 记录
+ */
+export async function deleteTaskRecord(
+  task_id: string,
+  record_id: string,
+  delete_file: boolean = true
+): Promise<{ success: boolean; message: string }> {
+  const params = new URLSearchParams()
+  if (!delete_file) params.append('delete_file', 'false')
+  return request(`/api/tasks/${task_id}/records/${record_id}?${params}`, {
+    method: 'DELETE',
+  })
+}
+
+/**
+ * 批量删除 STRM 记录
+ */
+export async function batchDeleteTaskRecords(
+  task_id: string,
+  record_ids?: string[],
+  delete_files: boolean = true
+): Promise<{ success: boolean; message: string; deleted_count: number }> {
+  return request(`/api/tasks/${task_id}/records/batch-delete`, {
+    method: 'POST',
+    body: JSON.stringify({ record_ids, delete_files }),
+  })
 }
 
 /**
@@ -473,6 +517,8 @@ export const api = {
   getTaskStatistics,
   getTaskLogs,
   getTaskRecords,
+  deleteTaskRecord,
+  batchDeleteTaskRecords,
   getSchedulerStatus,
   startScheduler,
   stopScheduler,

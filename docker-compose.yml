@@ -1,0 +1,54 @@
+# Multi-Cloud STRM Gateway Docker Compose
+version: '3.8'
+
+services:
+  strm-gateway:
+    image: ghcr.io/wenfer/yijie-strm:latest
+    container_name: strm-gateway
+    restart: unless-stopped
+    ports:
+      - "8115:8115"
+    volumes:
+      # 数据持久化
+      - ./data:/data
+      # Cookie 文件存储
+      - ./cookies:/root/.strm_gateway
+    environment:
+      # 服务配置
+      - GATEWAY_HOST=0.0.0.0
+      - GATEWAY_PORT=8115
+      - GATEWAY_DEBUG=false
+
+      # 数据库配置 (SQLite)
+      - DB_URL=sqlite:///data/strm_gateway.db
+
+      # STRM 基础 URL (修改为你的实际地址)
+      - STRM_BASE_URL=http://your-server-ip:8115/stream
+
+      # 日志级别
+      - LOG_LEVEL=INFO
+
+      # CORS 配置
+      - ENABLE_CORS=true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8115/api/system/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 可选: MySQL 数据库
+  # mysql:
+  #   image: mysql:8.0
+  #   container_name: strm-mysql
+  #   restart: unless-stopped
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=your_password
+  #     - MYSQL_DATABASE=strm_gateway
+  #   volumes:
+  #     - mysql-data:/var/lib/mysql
+  #   ports:
+  #     - "3306:3306"
+
+# volumes:
+#   mysql-data:
