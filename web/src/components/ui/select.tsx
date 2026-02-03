@@ -16,6 +16,7 @@ interface SelectContextType {
   onValueChange: (value: string) => void
   open: boolean
   setOpen: (open: boolean) => void
+  children: React.ReactNode
 }
 
 const SelectContext = React.createContext<SelectContextType | null>(null)
@@ -35,7 +36,7 @@ export function Select({ value = "", onValueChange, children, disabled }: Select
   }
 
   return (
-    <SelectContext.Provider value={{ value: selectedValue, onValueChange: handleValueChange, open, setOpen }}>
+    <SelectContext.Provider value={{ value: selectedValue, onValueChange: handleValueChange, open, setOpen, children }}>
       <div className={cn("relative", disabled && "opacity-50 pointer-events-none")}>{children}</div>
     </SelectContext.Provider>
   )
