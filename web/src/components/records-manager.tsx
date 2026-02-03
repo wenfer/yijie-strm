@@ -189,11 +189,11 @@ export function RecordsManager({ tasks, drives }: RecordsManagerProps) {
 
   // 获取任务名称
   const getTaskName = (taskId: string) => {
-    const task = tasks.find(t => t.task_id === taskId)
-    return task?.task_name || taskId
+    const task = tasks.find(t => t.id === taskId)
+    return task?.name || taskId
   }
 
-  const selectedTask = tasks.find(t => t.task_id === selectedTaskId)
+  const selectedTask = tasks.find(t => t.id === selectedTaskId)
 
   return (
     <div className="space-y-6">
@@ -269,8 +269,8 @@ export function RecordsManager({ tasks, drives }: RecordsManagerProps) {
                 </SelectTrigger>
                 <SelectContent>
                   {tasks.map(task => (
-                    <SelectItem key={task.task_id} value={task.task_id}>
-                      {task.task_name}
+                    <SelectItem key={task.id} value={task.id}>
+                      {task.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -335,7 +335,7 @@ export function RecordsManager({ tasks, drives }: RecordsManagerProps) {
               <FolderOpen className="h-5 w-5 text-primary" />
               STRM 记录列表
               {selectedTask && (
-                <Badge variant="secondary">{selectedTask.task_name}</Badge>
+                <Badge variant="secondary">{selectedTask.name}</Badge>
               )}
             </CardTitle>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
