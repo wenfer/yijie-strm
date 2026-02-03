@@ -135,7 +135,7 @@ export function RecordsManager({ tasks, drives }: RecordsManagerProps) {
     if (selectedRecords.size === filteredRecords.length) {
       setSelectedRecords(new Set())
     } else {
-      setSelectedRecords(new Set(filteredRecords.map(r => r.record_id)))
+      setSelectedRecords(new Set(filteredRecords.map(r => r.id)))
     }
   }
 
@@ -401,23 +401,23 @@ export function RecordsManager({ tasks, drives }: RecordsManagerProps) {
                 <AnimatePresence>
                   {filteredRecords.map((record, index) => (
                     <motion.div
-                      key={record.record_id}
+                      key={record.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -10 }}
                       transition={{ delay: index * 0.02 }}
                       className={cn(
                         "flex items-center gap-3 px-4 py-3 border-b hover:bg-muted/50 transition-colors",
-                        selectedRecords.has(record.record_id) && "bg-primary/5"
+                        selectedRecords.has(record.id) && "bg-primary/5"
                       )}
                     >
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 shrink-0"
-                        onClick={() => toggleSelect(record.record_id)}
+                        onClick={() => toggleSelect(record.id)}
                       >
-                        {selectedRecords.has(record.record_id) ? (
+                        {selectedRecords.has(record.id) ? (
                           <CheckSquare className="h-4 w-4 text-primary" />
                         ) : (
                           <Square className="h-4 w-4" />
@@ -491,7 +491,7 @@ export function RecordsManager({ tasks, drives }: RecordsManagerProps) {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-                                onClick={() => openDeleteDialog("single", record.record_id)}
+                                onClick={() => openDeleteDialog("single", record.id)}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
