@@ -182,9 +182,10 @@ export function RecordsManager({ tasks, drives }: RecordsManagerProps) {
   }
 
   // 格式化时间
-  const formatTime = (timestamp?: number) => {
-    if (!timestamp) return "-"
-    return new Date(timestamp * 1000).toLocaleString("zh-CN")
+  const formatTime = (time?: string | number) => {
+    if (!time) return "-"
+    const date = typeof time === "number" ? new Date(time * 1000) : new Date(time)
+    return date.toLocaleString("zh-CN")
   }
 
   // 获取任务名称
