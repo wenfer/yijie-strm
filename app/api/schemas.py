@@ -25,6 +25,36 @@ class ListResponse(ResponseBase):
     total: int = 0
 
 
+# ==================== 配置相关 ====================
+
+class GatewayConfig(BaseModel):
+    """网关配置"""
+    host: str = Field(default="0.0.0.0", description="监听地址")
+    port: int = Field(default=8115, description="监听端口")
+    debug: bool = Field(default=False, description="调试模式")
+    strm_base_url: Optional[str] = Field(None, description="STRM 文件基础 URL")
+    cache_ttl: int = Field(default=3600, description="下载链接缓存时间(秒)")
+    enable_cors: bool = Field(default=True, description="启用 CORS")
+
+class DatabaseConfig(BaseModel):
+    """数据库配置"""
+    url: str = Field(..., description="数据库连接 URL")
+    generate_schemas: bool = Field(default=True, description="自动生成表结构")
+    pool_min: int = Field(default=1, description="最小连接池大小")
+    pool_max: int = Field(default=10, description="最大连接池大小")
+
+class LogConfig(BaseModel):
+    """日志配置"""
+    level: str = Field(default="INFO", description="日志级别")
+    format: str = Field(default="%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s", description="日志格式")
+
+class SystemConfig(BaseModel):
+    """系统配置"""
+    gateway: GatewayConfig
+    database: DatabaseConfig
+    log: LogConfig
+
+
 # ==================== 网盘相关 ====================
 
 class DriveCreate(BaseModel):
@@ -47,7 +77,7 @@ class DriveResponse(BaseModel):
     is_current: bool
     created_at: Optional[str]
     last_used: Optional[str]
-    
+
     class Config:
         from_attributes = True
 
@@ -96,21 +126,21 @@ class TaskCreate(BaseModel):
     source_cid: str = Field(..., description="源文件夹 CID")
     output_dir: str = Field(..., description="输出目录")
     base_url: Optional[str] = Field(None, description="STRM 基础 URL")
-    
+
     # 文件过滤
     include_video: bool = Field(default=True, description="包含视频")
     include_audio: bool = Field(default=False, description="包含音频")
     custom_extensions: Optional[List[str]] = Field(None, description="自定义扩展名")
-    
+
     # 调度配置
     schedule_enabled: bool = Field(default=False, description="启用调度")
     schedule_type: Optional[str] = Field(None, description="调度类型")
     schedule_config: Optional[Dict[str, Any]] = Field(None, description="调度配置")
-    
+
     # 监听配置
     watch_enabled: bool = Field(default=False, description="启用监听")
     watch_interval: int = Field(default=1800, ge=60, description="监听间隔(秒)")
-    
+
     # 同步选项
     delete_orphans: bool = Field(default=True, description="删除孤立文件")
     preserve_structure: bool = Field(default=True, description="保留目录结构")
@@ -167,7 +197,7 @@ class TaskResponse(BaseModel):
     total_files_generated: int
     created_at: Optional[str]
     updated_at: Optional[str]
-    
+
     class Config:
         from_attributes = True
 

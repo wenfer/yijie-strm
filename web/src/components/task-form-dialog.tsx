@@ -104,7 +104,6 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
     drive_id: "",
     source_cid: "",
     output_dir: "",
-    base_url: "",
     include_video: true,
     include_audio: false,
     custom_extensions: "",
@@ -128,7 +127,6 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
         drive_id: task.drive_id,
         source_cid: task.source_cid,
         output_dir: task.output_dir,
-        base_url: task.base_url || "",
         include_video: task.include_video,
         include_audio: task.include_audio,
         custom_extensions: task.custom_extensions?.join(", ") || "",
@@ -191,7 +189,6 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
         drive_id: formData.drive_id,
         source_cid: formData.source_cid,
         output_dir: formData.output_dir,
-        base_url: formData.base_url || undefined,
         include_video: formData.include_video,
         include_audio: formData.include_audio,
         custom_extensions: formData.custom_extensions
@@ -440,19 +437,6 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
                   )}
                   <p className="text-xs text-muted-foreground">
                     STRM 文件的保存路径
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="base_url">基础 URL</Label>
-                  <Input
-                    id="base_url"
-                    value={formData.base_url}
-                    onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
-                    placeholder="例如：http://192.168.1.100:8115"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    STRM 文件中的流媒体服务器地址
                   </p>
                 </div>
               </div>

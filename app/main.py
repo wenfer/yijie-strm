@@ -8,6 +8,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,10 +24,26 @@ from app.tasks.scheduler import scheduler
 # 获取配置
 settings = get_settings()
 
+# 确保数据目录存在
+settings.data_dir.mkdir(parents=True, exist_ok=True)
+
 # 配置日志
+log_file = settings.data_dir / "app.log"
+file_handler = RotatingFileHandler(
+    log_file,
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding="utf-8"
+)
+file_handler.setFormatter(logging.Formatter(settings.log.format))
+
 logging.basicConfig(
     level=getattr(logging, settings.log.level.upper()),
-    format=settings.log.format
+    format=settings.log.format,
+    handlers=[
+        logging.StreamHandler(),
+        file_handler
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -40,15 +57,15 @@ async def init_tortoise():
         if db_path.startswith("~/"):
             db_path = os.path.expanduser(db_path)
         database_url = f"sqlite://{db_path}"
-    
+
     await Tortoise.init(
         db_url=database_url,
         modules={"models": ["app.models"]}
     )
-    
+
     if settings.database.generate_schemas:
         await Tortoise.generate_schemas()
-    
+
     logger.info("Tortoise ORM initialized")
 
 
@@ -65,36 +82,36 @@ async def lifespan(app: FastAPI):
     """
     # 启动
     logger.info("Starting STRM Gateway...")
-    
+
     # 确保数据目录存在
     settings.data_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # 初始化数据库
     await init_tortoise()
-    
+
     # 启动调度器
     await scheduler.start()
-    
+
     logger.info("STRM Gateway started successfully")
-    
+
     yield
-    
+
     # 关闭
     logger.info("Shutting down STRM Gateway...")
-    
+
     # 停止调度器
     await scheduler.stop()
-    
+
     # 关闭数据库
     await close_tortoise()
-    
+
     logger.info("STRM Gateway shut down successfully")
 
 
 def create_app() -> FastAPI:
     """
     创建 FastAPI 应用
-    
+
     Returns:
         FastAPI 应用实例
     """
@@ -104,7 +121,7 @@ def create_app() -> FastAPI:
         version="3.0.0",
         lifespan=lifespan
     )
-    
+
     # CORS 中间件
     if settings.gateway.enable_cors:
         app.add_middleware(
@@ -114,7 +131,7 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-    
+
     # 注册路由
     app.include_router(drive.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
@@ -185,7 +202,7 @@ def create_app() -> FastAPI:
                     "stream": "/stream/{pick_code}"
                 }
             }
-    
+
     return app
 
 
@@ -195,7 +212,7 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "app.main:app",
         host=settings.gateway.host,

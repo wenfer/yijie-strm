@@ -264,7 +264,6 @@ export interface StrmTask {
   drive_id: string
   source_cid: string
   output_dir: string
-  base_url?: string
   include_video: boolean
   include_audio: boolean
   custom_extensions?: string[]
@@ -516,6 +515,55 @@ export async function listLocalDirs(path: string = '/'): Promise<{
 }
 
 /**
+ * 系统配置
+ */
+export interface SystemConfig {
+  gateway: {
+    host: string
+    port: number
+    debug: boolean
+    strm_base_url?: string
+    cache_ttl: number
+    enable_cors: boolean
+  }
+  database: {
+    url: string
+    generate_schemas: boolean
+    pool_min: number
+    pool_max: number
+  }
+  log: {
+    level: string
+    format: string
+  }
+}
+
+/**
+ * 获取系统配置
+ */
+export async function getSystemConfig(): Promise<{ success: boolean; data: SystemConfig }> {
+  return request('/api/system/config')
+}
+
+/**
+ * 保存系统配置
+ */
+export async function saveSystemConfig(config: SystemConfig): Promise<{ success: boolean; message: string }> {
+  return request('/api/system/config', {
+    method: 'POST',
+    body: JSON.stringify(config),
+  })
+}
+
+/**
+ * 获取系统日志
+ */
+export async function getSystemLogs(lines: number = 100): Promise<{ success: boolean; data: string[] }> {
+  const params = new URLSearchParams({ lines: lines.toString() })
+  return request(`/api/system/logs?${params}`)
+}
+
+/**
  * API 命名空间对象（用于兼容旧的导入方式）
  */
 export const api = {
@@ -549,6 +597,9 @@ export const api = {
   startScheduler,
   stopScheduler,
   listLocalDirs,
+  getSystemConfig,
+  saveSystemConfig,
+  getSystemLogs,
 }
 
 export default api

@@ -328,7 +328,6 @@ data_dir: "~/.strm_gateway"
 - `drive_id`: 关联网盘 ID
 - `source_cid`: 源文件夹 CID
 - `output_dir`: 输出目录
-- `base_url`: STRM 基础 URL
 - `include_video`: 包含视频文件
 - `include_audio`: 包含音频文件
 - `custom_extensions`: 自定义扩展名列表
