@@ -182,6 +182,38 @@ python run.py --debug
 
 ## 环境变量
 
+配置加载优先级:
+1. 命令行参数 (CLI)
+2. 环境变量 (ENV)
+3. 根目录 `config.yaml`
+4. 默认值
+
+`config.yaml` 采用分组结构并映射到环境变量:
+
+```yaml
+gateway:
+  host: "0.0.0.0"
+  port: 8115
+  debug: false
+  strm_base_url: ""
+  enable_cors: true
+  cors_origins:
+    - "*"
+  cache_ttl: 3600
+
+database:
+  url: "sqlite://~/.strm_gateway.db"
+  generate_schemas: true
+  pool_min: 1
+  pool_max: 10
+
+log:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
+
+data_dir: "~/.strm_gateway"
+```
+
 ### 网关配置
 | 变量 | 默认值 | 说明 |
 |------|--------|------|

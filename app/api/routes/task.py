@@ -67,7 +67,8 @@ async def create_task(
             watch_interval=data.watch_interval,
             delete_orphans=data.delete_orphans,
             preserve_structure=data.preserve_structure,
-            overwrite_strm=data.overwrite_strm
+            overwrite_strm=data.overwrite_strm,
+            download_metadata=data.download_metadata
         )
         
         # 如果启用了调度，添加到调度器

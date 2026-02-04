@@ -440,6 +440,66 @@ class P115Provider:
         """判断是否为媒体文件"""
         return self.is_video_file(filename) or self.is_audio_file(filename)
 
+    async def download_file(
+            self,
+            pick_code: str,
+            file_id: int,
+            output_path: Path,
+            user_agent: Optional[str] = None
+    ) -> bool:
+        """
+        下载文件到本地
+
+        Args:
+            pick_code: 文件的 pick_code
+            file_id: 文件 ID
+            output_path: 输出文件路径
+            user_agent: 可选的 User-Agent
+
+        Returns:
+            是否下载成功
+        """
+        import httpx
+
+        try:
+            # 获取下载链接
+            download_url = await self.get_download_url(pick_code, file_id, user_agent)
+            if not download_url:
+                logger.warning(f"Failed to get download URL for pick_code: {pick_code}")
+                return False
+
+            # 确保输出目录存在
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # 设置请求头
+            headers = {
+                "User-Agent": user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+
+            # 流式下载文件
+            async with httpx.AsyncClient(follow_redirects=True, timeout=300.0) as client:
+                async with client.stream("GET", download_url, headers=headers) as response:
+                    if response.status_code != 200:
+                        logger.error(f"Download failed with status {response.status_code} for {pick_code}")
+                        return False
+
+                    with open(output_path, "wb") as f:
+                        async for chunk in response.aiter_bytes(chunk_size=8192):
+                            f.write(chunk)
+
+            logger.info(f"Downloaded file to: {output_path}")
+            return True
+
+        except Exception as e:
+            logger.exception(f"Error downloading file {pick_code}: {e}")
+            # 如果下载失败，删除可能创建的不完整文件
+            if output_path.exists():
+                try:
+                    output_path.unlink()
+                except Exception:
+                    pass
+            return False
+
 
 # Provider 管理器
 class ProviderManager:

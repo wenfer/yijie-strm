@@ -115,6 +115,7 @@ class TaskCreate(BaseModel):
     delete_orphans: bool = Field(default=True, description="删除孤立文件")
     preserve_structure: bool = Field(default=True, description="保留目录结构")
     overwrite_strm: bool = Field(default=False, description="覆盖已有 STRM")
+    download_metadata: bool = Field(default=False, description="下载刮削资源文件")
 
 
 class TaskUpdate(BaseModel):
@@ -134,6 +135,7 @@ class TaskUpdate(BaseModel):
     delete_orphans: Optional[bool] = None
     preserve_structure: Optional[bool] = None
     overwrite_strm: Optional[bool] = None
+    download_metadata: Optional[bool] = None
 
 
 class TaskResponse(BaseModel):
@@ -155,6 +157,7 @@ class TaskResponse(BaseModel):
     delete_orphans: bool
     preserve_structure: bool
     overwrite_strm: bool
+    download_metadata: bool
     status: str
     last_run_time: Optional[str]
     last_run_status: Optional[str]

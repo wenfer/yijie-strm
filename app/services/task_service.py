@@ -69,6 +69,7 @@ class TaskService:
             delete_orphans=kwargs.get("delete_orphans", True),
             preserve_structure=kwargs.get("preserve_structure", True),
             overwrite_strm=kwargs.get("overwrite_strm", False),
+            download_metadata=kwargs.get("download_metadata", False),
             status=TaskStatus.IDLE
         )
         
@@ -134,7 +135,8 @@ class TaskService:
             "include_video", "include_audio", "custom_extensions",
             "schedule_enabled", "schedule_type", "schedule_config",
             "watch_enabled", "watch_interval",
-            "delete_orphans", "preserve_structure", "overwrite_strm"
+            "delete_orphans", "preserve_structure", "overwrite_strm",
+            "download_metadata"
         }
         
         for field, value in updates.items():

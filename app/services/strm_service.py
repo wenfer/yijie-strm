@@ -4,7 +4,7 @@ STRM 文件生成服务
 import logging
 import asyncio
 from pathlib import Path
-from typing import List, Optional, Dict, Callable
+from typing import List, Optional, Dict, Callable, Set
 from datetime import datetime
 from urllib.parse import urljoin
 
@@ -31,6 +31,21 @@ class StrmService:
         '.mp3', '.flac', '.wav', '.aac', '.m4a', '.wma', '.ogg',
         '.ape', '.opus', '.alac', '.aiff'
     }
+
+    # 刮削资源文件扩展名
+    METADATA_EXTENSIONS = {'.nfo'}
+
+    # 图片扩展名
+    IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png'}
+
+    # 图片文件名关键词（用于识别封面图等）
+    METADATA_IMAGE_PATTERNS = {
+        'poster', 'fanart', 'banner', 'thumb', 'logo',
+        'clearart', 'landscape', 'disc', 'folder', 'backdrop'
+    }
+
+    # 字幕扩展名
+    SUBTITLE_EXTENSIONS = {'.srt', '.ass', '.sub', '.ssa', '.idx', '.vtt', '.sup'}
 
     def __init__(
             self,
@@ -80,6 +95,35 @@ class StrmService:
             return True
 
         logger.debug(f"Filter: {file_info.name} ext={ext} included=False")
+        return False
+
+    def _is_metadata_file(self, filename: str) -> bool:
+        """
+        判断是否为刮削资源文件
+
+        Args:
+            filename: 文件名
+
+        Returns:
+            是否为刮削资源文件
+        """
+        ext = Path(filename).suffix.lower()
+        stem = Path(filename).stem.lower()
+
+        # NFO 文件
+        if ext in self.METADATA_EXTENSIONS:
+            return True
+
+        # 字幕文件
+        if ext in self.SUBTITLE_EXTENSIONS:
+            return True
+
+        # 封面图文件（需要匹配文件名关键词）
+        if ext in self.IMAGE_EXTENSIONS:
+            for pattern in self.METADATA_IMAGE_PATTERNS:
+                if pattern in stem:
+                    return True
+
         return False
 
     def _build_strm_url(self, pick_code: str, base_url: Optional[str] = None) -> str:
@@ -163,6 +207,8 @@ class StrmService:
             "files_updated": 0,
             "files_deleted": 0,
             "files_skipped": 0,
+            "metadata_downloaded": 0,
+            "metadata_skipped": 0,
             "errors": []
         }
 
@@ -197,6 +243,9 @@ class StrmService:
             # 如果启用删除孤立文件，收集当前文件 ID
             current_file_ids = set()
 
+            # 记录包含媒体文件的目录（用于下载刮削资源）
+            media_dirs: Dict[str, str] = {}  # {parent_id: parent_path}
+
             # 处理文件
             for index, (file_info, file_path) in enumerate(files_to_process):
                 task.current_file_index = index + 1
@@ -206,6 +255,11 @@ class StrmService:
                     progress_callback(index + 1, len(files_to_process))
 
                 current_file_ids.add(file_info.id)
+
+                # 记录包含媒体文件的目录
+                if file_info.parent_id and file_info.parent_id != "0":
+                    parent_path = str(Path(file_path).parent)
+                    media_dirs[file_info.parent_id] = parent_path
 
                 try:
                     result = await self._process_file(task, file_info, file_path)
@@ -227,10 +281,26 @@ class StrmService:
                 deleted = await self._cleanup_orphan_records(task, current_file_ids)
                 stats["files_deleted"] = deleted
 
+            # 下载刮削资源文件
+            if task.download_metadata and media_dirs:
+                logger.info(f"Starting metadata download for {len(media_dirs)} directories")
+                meta_downloaded, meta_skipped = await self._download_metadata_files(task, media_dirs)
+                stats["metadata_downloaded"] = meta_downloaded
+                stats["metadata_skipped"] = meta_skipped
+
             # 更新任务状态
             task.status = TaskStatus.SUCCESS
             task.last_run_status = "success"
-            task.last_run_message = f"新增: {stats['files_added']}, 更新: {stats['files_updated']}, 删除: {stats['files_deleted']}, 跳过: {stats['files_skipped']}"
+            msg_parts = [
+                f"新增: {stats['files_added']}",
+                f"更新: {stats['files_updated']}",
+                f"删除: {stats['files_deleted']}",
+                f"跳过: {stats['files_skipped']}"
+            ]
+            if task.download_metadata:
+                msg_parts.append(f"刮削下载: {stats['metadata_downloaded']}")
+                msg_parts.append(f"刮削跳过: {stats['metadata_skipped']}")
+            task.last_run_message = ", ".join(msg_parts)
             task.last_run_time = datetime.now()
             task.total_runs += 1
             await task.save()
@@ -248,7 +318,9 @@ class StrmService:
                 files_added=stats["files_added"],
                 files_updated=stats["files_updated"],
                 files_deleted=stats["files_deleted"],
-                files_skipped=stats["files_skipped"]
+                files_skipped=stats["files_skipped"],
+                metadata_downloaded=stats["metadata_downloaded"],
+                metadata_skipped=stats["metadata_skipped"]
             )
 
         except Exception as e:
@@ -399,11 +471,84 @@ class StrmService:
     async def get_stream_url(self, pick_code: str, id: int, user_agent: str) -> Optional[str]:
         """
         获取流媒体 URL（用于 302 重定向）
-        
+
         Args:
             pick_code: 文件的 pick_code
-            
+
         Returns:
             下载链接
         """
         return await self.provider.get_download_url(pick_code, id, user_agent)
+
+    async def _download_metadata_files(
+            self,
+            task: StrmTask,
+            media_dirs: Dict[str, str]
+    ) -> tuple:
+        """
+        下载刮削资源文件
+
+        Args:
+            task: STRM 任务
+            media_dirs: 包含媒体文件的目录 {parent_id: parent_path}
+
+        Returns:
+            (downloaded_count, skipped_count)
+        """
+        downloaded_count = 0
+        skipped_count = 0
+
+        for dir_id, dir_path in media_dirs.items():
+            try:
+                # 列出目录内所有文件
+                files, _ = await self.provider.list_files(dir_id, limit=1000)
+
+                for file_info in files:
+                    # 跳过文件夹
+                    if file_info.is_dir:
+                        continue
+
+                    # 检查是否为刮削资源文件
+                    if not self._is_metadata_file(file_info.name):
+                        continue
+
+                    # 构建本地保存路径
+                    if task.preserve_structure:
+                        local_path = Path(task.output_dir) / dir_path / file_info.name
+                    else:
+                        local_path = Path(task.output_dir) / file_info.name
+
+                    # 检查文件是否已存在
+                    if local_path.exists() and not task.overwrite_strm:
+                        logger.debug(f"Metadata file already exists, skipping: {local_path}")
+                        skipped_count += 1
+                        continue
+
+                    # 获取 pick_code
+                    pick_code = file_info.pick_code
+                    if not pick_code:
+                        pick_code = await self.provider.to_pickcode(file_info.id)
+
+                    if not pick_code:
+                        logger.warning(f"Cannot get pick_code for metadata file: {file_info.name}")
+                        continue
+
+                    # 下载文件
+                    success = await self.provider.download_file(
+                        pick_code=pick_code,
+                        file_id=int(file_info.id),
+                        output_path=local_path,
+                        user_agent=None
+                    )
+
+                    if success:
+                        downloaded_count += 1
+                        logger.info(f"Downloaded metadata file: {file_info.name} -> {local_path}")
+                    else:
+                        logger.warning(f"Failed to download metadata file: {file_info.name}")
+
+            except Exception as e:
+                logger.exception(f"Error downloading metadata files from directory {dir_id}: {e}")
+
+        logger.info(f"Metadata download completed: downloaded={downloaded_count}, skipped={skipped_count}")
+        return downloaded_count, skipped_count

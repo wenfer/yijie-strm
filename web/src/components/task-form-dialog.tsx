@@ -20,6 +20,7 @@ import {
   FileAudio,
   Zap,
   Check,
+  Download,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils"
 import { api, StrmTask, Drive } from "@/lib/api"
 import { FolderPicker } from "@/components/folder-picker"
+import { LocalDirPicker } from "@/components/local-dir-picker"
 
 interface TaskFormDialogProps {
   open: boolean
@@ -94,6 +96,7 @@ function FormSection({ title, icon: Icon, description, children, defaultOpen = t
 export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: TaskFormDialogProps) {
   const [loading, setLoading] = useState(false)
   const [folderPickerOpen, setFolderPickerOpen] = useState(false)
+  const [dirPickerOpen, setDirPickerOpen] = useState(false)
   const [folderPath, setFolderPath] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [formData, setFormData] = useState({
@@ -115,6 +118,7 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
     delete_orphans: true,
     preserve_structure: true,
     overwrite_strm: false,
+    download_metadata: false,
   })
 
   useEffect(() => {
@@ -138,6 +142,7 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
         delete_orphans: task.delete_orphans,
         preserve_structure: task.preserve_structure,
         overwrite_strm: task.overwrite_strm,
+        download_metadata: task.download_metadata,
       })
       setFolderPath("")
     } else {
@@ -204,6 +209,7 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
         delete_orphans: formData.delete_orphans,
         preserve_structure: formData.preserve_structure,
         overwrite_strm: formData.overwrite_strm,
+        download_metadata: formData.download_metadata,
       }
 
       if (task) {
@@ -394,16 +400,38 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
                     输出目录
                     <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    id="output_dir"
-                    value={formData.output_dir}
-                    onChange={(e) => {
-                      setFormData({ ...formData, output_dir: e.target.value })
-                      if (errors.output_dir) setErrors({ ...errors, output_dir: "" })
-                    }}
-                    placeholder="例如：/volume1/media/movies"
-                    className={inputClassName("output_dir")}
-                  />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Folder className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="output_dir"
+                        value={formData.output_dir}
+                        onChange={(e) => {
+                          setFormData({ ...formData, output_dir: e.target.value })
+                          if (errors.output_dir) setErrors({ ...errors, output_dir: "" })
+                        }}
+                        placeholder="点击右侧按钮选择目录或手动输入"
+                        className={cn("pl-10", inputClassName("output_dir"))}
+                      />
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            onClick={() => setDirPickerOpen(true)}
+                            className="gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-md"
+                          >
+                            <FolderOpen className="h-4 w-4" />
+                            选择
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>浏览服务器目录</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                   {errors.output_dir && (
                     <p className="text-xs text-red-500 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
@@ -483,6 +511,23 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
                   <p className="text-xs text-muted-foreground">
                     用逗号分隔，留空则使用默认规则
                   </p>
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-md bg-emerald-100 dark:bg-emerald-900/30">
+                      <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <Label htmlFor="download_metadata" className="font-medium cursor-pointer">下载刮削资源</Label>
+                      <p className="text-xs text-muted-foreground">下载 NFO、封面图、字幕等刮削资源文件到本地</p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="download_metadata"
+                    checked={formData.download_metadata}
+                    onCheckedChange={(checked) => setFormData({ ...formData, download_metadata: checked })}
+                  />
                 </div>
               </div>
             </FormSection>
@@ -717,6 +762,15 @@ export function TaskFormDialog({ open, onOpenChange, task, drives, onSuccess }: 
         onOpenChange={setFolderPickerOpen}
         onSelect={handleFolderSelect}
         driveId={formData.drive_id}
+      />
+
+      <LocalDirPicker
+        open={dirPickerOpen}
+        onOpenChange={setDirPickerOpen}
+        onSelect={(path) => {
+          setFormData(prev => ({ ...prev, output_dir: path }))
+          if (errors.output_dir) setErrors(prev => ({ ...prev, output_dir: "" }))
+        }}
       />
     </Dialog>
   )

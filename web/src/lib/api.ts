@@ -119,7 +119,7 @@ async function request<T = any>(
  * 健康检查
  */
 export async function checkHealth(): Promise<HealthResponse> {
-  return request<HealthResponse>('/health')
+  return request<HealthResponse>('/api/system/health')
 }
 
 /**
@@ -276,6 +276,7 @@ export interface StrmTask {
   delete_orphans: boolean
   preserve_structure: boolean
   overwrite_strm: boolean
+  download_metadata: boolean
   status: string
   last_run_time?: string
   last_run_status?: string
@@ -316,6 +317,8 @@ export interface TaskLog {
   files_updated: number
   files_deleted: number
   files_skipped: number
+  metadata_downloaded: number
+  metadata_skipped: number
 }
 
 export interface StrmRecord {
@@ -490,6 +493,29 @@ export async function stopScheduler(): Promise<{ success: boolean; message: stri
 }
 
 /**
+ * 本地目录项
+ */
+export interface LocalDirItem {
+  name: string
+  path: string
+}
+
+/**
+ * 浏览服务器本地目录
+ */
+export async function listLocalDirs(path: string = '/'): Promise<{
+  success: boolean
+  data: {
+    current_path: string
+    parent_path: string | null
+    directories: LocalDirItem[]
+  }
+}> {
+  const params = new URLSearchParams({ path })
+  return request(`/api/system/directories?${params}`)
+}
+
+/**
  * API 命名空间对象（用于兼容旧的导入方式）
  */
 export const api = {
@@ -522,6 +548,7 @@ export const api = {
   getSchedulerStatus,
   startScheduler,
   stopScheduler,
+  listLocalDirs,
 }
 
 export default api

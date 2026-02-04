@@ -1,0 +1,23 @@
+# Example configuration values (use as reference; CLI > ENV > YAML > defaults)
+
+gateway:
+  host: "0.0.0.0"
+  port: 8115
+  debug: false
+  strm_base_url: ""
+  enable_cors: true
+  cors_origins:
+    - "*"
+  cache_ttl: 3600
+
+database:
+  url: "sqlite://~/.strm_gateway.db"
+  generate_schemas: true
+  pool_min: 1
+  pool_max: 10
+
+log:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
+
+data_dir: "~/.strm_gateway"

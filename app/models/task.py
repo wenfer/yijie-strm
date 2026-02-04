@@ -66,6 +66,7 @@ class StrmTask(Model):
     delete_orphans = fields.BooleanField(default=True, description="删除孤立文件")
     preserve_structure = fields.BooleanField(default=True, description="保留目录结构")
     overwrite_strm = fields.BooleanField(default=False, description="覆盖已有STRM")
+    download_metadata = fields.BooleanField(default=False, description="下载刮削资源文件")
     
     # 状态信息
     status = fields.CharField(max_length=20, default="idle", description="状态")
@@ -116,6 +117,7 @@ class StrmTask(Model):
             "delete_orphans": self.delete_orphans,
             "preserve_structure": self.preserve_structure,
             "overwrite_strm": self.overwrite_strm,
+            "download_metadata": self.download_metadata,
             "status": self.status,
             "last_run_time": self.last_run_time.isoformat() if self.last_run_time else None,
             "last_run_status": self.last_run_status,
@@ -218,6 +220,8 @@ class TaskLog(Model):
     files_updated = fields.IntField(default=0, description="更新文件数")
     files_deleted = fields.IntField(default=0, description="删除文件数")
     files_skipped = fields.IntField(default=0, description="跳过文件数")
+    metadata_downloaded = fields.IntField(default=0, description="下载刮削资源数")
+    metadata_skipped = fields.IntField(default=0, description="跳过刮削资源数")
     
     class Meta:
         table = "task_logs"
@@ -242,4 +246,6 @@ class TaskLog(Model):
             "files_updated": self.files_updated,
             "files_deleted": self.files_deleted,
             "files_skipped": self.files_skipped,
+            "metadata_downloaded": self.metadata_downloaded,
+            "metadata_skipped": self.metadata_skipped,
         }
