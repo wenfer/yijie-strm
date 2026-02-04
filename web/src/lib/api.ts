@@ -264,6 +264,7 @@ export interface StrmTask {
   drive_id: string
   source_cid: string
   output_dir: string
+  base_url?: string
   include_video: boolean
   include_audio: boolean
   custom_extensions?: string[]
