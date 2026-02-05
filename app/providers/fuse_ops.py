@@ -58,14 +58,46 @@ def create_fuse_instance(cookie_file: str, root_cid: str = "0") -> Optional[P115
     try:
         fuse_log("INFO", f"Creating P115FuseOperations with cookie_file={cookie_file}, root_cid={root_cid}")
 
-        # 根据 p115fuse 的实现，它会自动读取 cookie 文件
-        # 只需要传递 cookie 路径即可
-        ops = P115FuseOperations(
-            path_or_cookies=cookie_file,
-            cid=root_cid if root_cid != "0" else None  # None 表示使用根目录
-        )
+        # 根据文档示例：P115FuseOperations().run_forever("mount_point", ...)
+        # 似乎是无参数构造，然后在 run_forever 时传递路径
+        # 但我们需要指定 cookie 和 root_cid
+
+        from pathlib import Path
+
+        # 尝试创建实例
+        # 检查构造函数签名
+        import inspect
+        sig = inspect.signature(P115FuseOperations.__init__)
+        fuse_log("INFO", f"P115FuseOperations.__init__ signature: {sig}")
+
+        # 根据签名创建实例
+        params = list(sig.parameters.keys())
+        fuse_log("INFO", f"Constructor parameters: {params}")
+
+        # 尝试不同的构造方式
+        if len(params) <= 1:  # 只有 self
+            # 无参数构造
+            ops = P115FuseOperations()
+            fuse_log("INFO", "Created with no args (will configure in run_forever)")
+        else:
+            # 有参数构造
+            # 尝试常见的参数名
+            kwargs = {}
+            if 'path' in params or 'cookie_path' in params or 'cookies' in params:
+                # 传递 cookie 路径
+                param_name = 'path' if 'path' in params else ('cookie_path' if 'cookie_path' in params else 'cookies')
+                kwargs[param_name] = Path(cookie_file)
+            if 'cid' in params and root_cid != "0":
+                kwargs['cid'] = root_cid
+
+            fuse_log("INFO", f"Creating with kwargs: {kwargs}")
+            ops = P115FuseOperations(**kwargs)
 
         fuse_log("INFO", "P115FuseOperations created successfully")
+        # 保存配置供后续使用
+        ops._cookie_file = cookie_file
+        ops._root_cid = root_cid if root_cid != "0" else None
+
         return ops
     except Exception as e:
         fuse_log("ERROR", f"Failed to create P115FuseOperations: {e}")
@@ -84,17 +116,53 @@ def mount_fuse(ops: P115FuseOperations, mount_point: str, **kwargs):
         **kwargs: 传递给 run_forever 的额外参数
     """
     fuse_log("INFO", f"Starting FUSE mount on {mount_point}")
-    fuse_log("INFO", f"  kwargs: {kwargs}")
+    fuse_log("INFO", f"  Mount point: {mount_point}")
+    fuse_log("INFO", f"  Options: {kwargs}")
+
+    # 根据文档示例，run_forever 的第一个参数是挂载点路径（或 cookie 路径）
+    # 检查 run_forever 的签名
+    import inspect
+    sig = inspect.signature(ops.run_forever)
+    params = list(sig.parameters.keys())
+    fuse_log("INFO", f"run_forever parameters: {params}")
 
     try:
-        ops.run_forever(
-            mount_point,
-            foreground=kwargs.get("foreground", True),
-            max_readahead=kwargs.get("max_readahead", 0),
-            noauto_cache=kwargs.get("noauto_cache", True),
-            allow_other=kwargs.get("allow_other", False),
-            nothreads=kwargs.get("nothreads", False),
-        )
+        # 根据保存的配置构建参数
+        # 文档示例: run_forever("p115fuse", foreground=True, ...)
+        # "p115fuse" 可能是挂载点，也可能是 cookie 路径
+
+        # 提取 cookie 和 cid 配置
+        cookie_file = getattr(ops, '_cookie_file', None)
+        root_cid = getattr(ops, '_root_cid', None)
+
+        fuse_log("INFO", f"  Cookie file: {cookie_file}")
+        fuse_log("INFO", f"  Root CID: {root_cid}")
+
+        # 构建 run_forever 参数
+        run_kwargs = {
+            "foreground": kwargs.get("foreground", True),
+            "max_readahead": kwargs.get("max_readahead", 0),
+            "noauto_cache": kwargs.get("noauto_cache", True),
+            "allow_other": kwargs.get("allow_other", False),
+        }
+
+        if kwargs.get("nothreads"):
+            run_kwargs["nothreads"] = True
+
+        # 检查第一个参数应该是什么
+        # 根据文档，可能是 cookie_path 或 mount_point
+        # 先尝试传递 cookie_file (如果有)，否则传递 mount_point
+        first_arg = cookie_file if cookie_file else mount_point
+
+        fuse_log("INFO", f"Calling run_forever('{first_arg}', {run_kwargs})")
+
+        # 如果有 cid 参数，添加到 kwargs
+        if 'cid' in params and root_cid:
+            run_kwargs['cid'] = root_cid
+            fuse_log("INFO", f"  Added cid={root_cid} to run_kwargs")
+
+        ops.run_forever(first_arg, **run_kwargs)
+
         fuse_log("INFO", "FUSE mount exited normally")
     except Exception as e:
         fuse_log("ERROR", f"FUSE mount failed: {e}")
