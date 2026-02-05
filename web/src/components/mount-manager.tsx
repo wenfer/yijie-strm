@@ -280,7 +280,7 @@ export function MountManager() {
                 <div className="relative space-y-5 py-4">
                   <div className="space-y-2">
                     <Label>选择网盘</Label>
-                    <Select value={selectedDriveId} onValueChange={setSelectedDriveId} modal={false}>
+                    <Select value={selectedDriveId} onValueChange={setSelectedDriveId}>
                       <SelectTrigger>
                         <SelectValue placeholder="请选择要挂载的网盘" />
                       </SelectTrigger>

@@ -35,7 +35,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
     libfuse2 \
-    fuse \
+    libfuse3-3 \
+    fuse3 \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
