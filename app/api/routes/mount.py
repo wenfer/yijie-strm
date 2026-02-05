@@ -1,9 +1,14 @@
+import logging
+import traceback
+
 from fastapi import APIRouter, HTTPException
 
 from app.api.schemas import MountCreate, ResponseBase
 from app.models.mount import Mount
 from app.models.drive import Drive
 from app.services.mount_service import mount_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mounts", tags=["mounts"])
 
@@ -59,25 +64,55 @@ async def start_mount(mount_id: str):
             "pending": bool # 是否还在启动中
         }
     """
-    mount = await Mount.get_or_none(id=mount_id)
-    if not mount:
-        raise HTTPException(status_code=404, detail="Mount not found")
+    logger.info(f"Starting mount request for mount_id={mount_id}")
 
-    result = await mount_service.start_mount(mount)
+    try:
+        mount = await Mount.get_or_none(id=mount_id)
+        if not mount:
+            logger.warning(f"Mount not found: {mount_id}")
+            raise HTTPException(status_code=404, detail="Mount not found")
 
-    # 如果失败，返回 500 错误
-    if not result.get("success"):
-        # 返回详细错误信息和日志
+        logger.info(f"Found mount: id={mount.id}, mount_point={mount.mount_point}")
+
+        # 获取关联的 drive 信息
+        await mount.fetch_related('drive')
+        if mount.drive:
+            logger.info(f"Associated drive: id={mount.drive.id}, cookie_file={mount.drive.cookie_file}")
+        else:
+            logger.error(f"Mount {mount_id} has no associated drive")
+            raise HTTPException(status_code=400, detail="Mount has no associated drive")
+
+        result = await mount_service.start_mount(mount)
+        logger.info(f"Mount service result: success={result.get('success')}, message={result.get('message')}")
+
+        # 如果失败，返回 500 错误
+        if not result.get("success"):
+            logger.error(f"Mount failed: {result.get('message')}, error={result.get('error')}")
+            # 返回详细错误信息和日志
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": result.get("message"),
+                    "error": result.get("error"),
+                    "logs": result.get("logs", [])
+                }
+            )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_tb = traceback.format_exc()
+        logger.error(f"Unexpected error in start_mount: {e}\n{error_tb}")
         raise HTTPException(
             status_code=500,
             detail={
-                "message": result.get("message"),
-                "error": result.get("error"),
-                "logs": result.get("logs", [])
+                "message": f"Unexpected error: {str(e)}",
+                "error": str(e),
+                "traceback": error_tb
             }
         )
-
-    return result
 
 @router.post("/{mount_id}/unmount")
 async def stop_mount(mount_id: str):

@@ -194,24 +194,43 @@ class MountService:
             dict: 包含 success, message, logs 等信息的字典
         """
         mount_id = str(mount.id)
+        logger.info(f"[start_mount] Starting mount process for mount_id={mount_id}")
 
         # 检查是否已有运行中的会话
         if mount_id in self._sessions:
             session = self._sessions[mount_id]
             if session.process and session.process.is_alive() and session.status == "running":
+                logger.info(f"[start_mount] Mount {mount_id} already running")
                 return {"success": True, "message": "Mount already running", "logs": [log.__dict__ for log in session.logs]}
             # 清理旧的会话
+            logger.info(f"[start_mount] Cleaning up old session for {mount_id}")
             self._cleanup_session(mount_id)
 
         # 获取网盘信息
+        logger.info(f"[start_mount] Fetching drive info for mount {mount_id}")
         await mount.fetch_related('drive')
         if not mount.drive:
+            logger.error(f"[start_mount] Drive not found for mount {mount_id}")
             return {"success": False, "message": "Drive not found", "logs": []}
 
         cookie_file = str(mount.drive.cookie_file)
         mount_point = os.path.expanduser(mount.mount_point)
+        logger.info(f"[start_mount] cookie_file={cookie_file}, mount_point={mount_point}")
+
+        # 检查 cookie 文件是否存在
+        if not os.path.exists(cookie_file):
+            error_msg = f"Cookie file not found: {cookie_file}"
+            logger.error(f"[start_mount] {error_msg}")
+            return {"success": False, "message": error_msg, "logs": []}
+
+        # 检查 FUSE 是否可用
+        if not HAS_FUSE:
+            error_msg = "FUSE library not available"
+            logger.error(f"[start_mount] {error_msg}")
+            return {"success": False, "message": error_msg, "logs": []}
 
         # 创建消息队列和会话
+        logger.info(f"[start_mount] Creating message queue and session for {mount_id}")
         message_queue = multiprocessing.Queue()
         session = MountSession(
             mount_id=mount_id,
@@ -221,25 +240,30 @@ class MountService:
         self._sessions[mount_id] = session
 
         # 启动进程
+        logger.info(f"[start_mount] Starting FUSE process for {mount_id}")
         p = multiprocessing.Process(
             target=run_fuse_process,
             args=(cookie_file, mount_point, mount.mount_config or {}, message_queue)
         )
         p.start()
         session.process = p
+        logger.info(f"[start_mount] FUSE process started with PID {p.pid}")
 
         # 等待启动结果
+        logger.info(f"[start_mount] Waiting for startup result (timeout={timeout}s)")
         start_time = time.time()
         while time.time() - start_time < timeout:
             # 处理消息队列
             try:
                 while True:
                     msg = message_queue.get_nowait()
+                    logger.debug(f"[start_mount] Received message: {msg}")
                     if msg.get("type") == "log":
                         session.add_log(msg.get("level", "INFO"), msg.get("message", ""))
                     elif msg.get("type") == "status":
                         status = msg.get("status")
                         session.status = status
+                        logger.info(f"[start_mount] Status changed to: {status}")
 
                         if status == "running":
                             # 启动成功
@@ -247,6 +271,7 @@ class MountService:
                             mount.is_mounted = True
                             mount.pid = p.pid
                             await mount.save()
+                            logger.info(f"[start_mount] Mount {mount_id} started successfully with PID {p.pid}")
                             return {
                                 "success": True,
                                 "message": f"Mount started with PID {p.pid}",
@@ -260,6 +285,7 @@ class MountService:
                             mount.is_mounted = False
                             mount.pid = None
                             await mount.save()
+                            logger.error(f"[start_mount] Mount {mount_id} failed: {session.error_message}")
                             # 清理失败的进程
                             self._cleanup_session(mount_id)
                             return {
@@ -274,8 +300,9 @@ class MountService:
             # 检查进程是否还在运行
             if not p.is_alive():
                 # 进程意外退出
+                logger.error(f"[start_mount] Process exited unexpectedly for mount {mount_id}, exit_code={p.exitcode}")
                 session.status = "failed"
-                session.error_message = "Process exited unexpectedly"
+                session.error_message = f"Process exited unexpectedly (exit_code={p.exitcode})"
                 session.end_time = datetime.now()
                 mount.is_mounted = False
                 mount.pid = None
@@ -283,6 +310,7 @@ class MountService:
                 return {
                     "success": False,
                     "message": "Mount process exited unexpectedly",
+                    "error": session.error_message,
                     "logs": [log.__dict__ for log in session.logs]
                 }
 
@@ -290,6 +318,7 @@ class MountService:
 
         # 超时了，但进程可能还在启动中
         # 返回当前状态，让前端继续轮询
+        logger.warning(f"[start_mount] Timeout waiting for mount {mount_id}, but process is still running")
         mount.is_mounted = True
         mount.pid = p.pid
         await mount.save()

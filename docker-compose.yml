@@ -6,6 +6,15 @@ services:
     image: ghcr.io/wenfer/yijie-strm:latest
     container_name: strm-gateway
     restart: unless-stopped
+    # FUSE 挂载需要特权模式
+    privileged: true
+    # 或者使用更细粒度的权限控制 (二选一)
+    # cap_add:
+    #   - SYS_ADMIN
+    # devices:
+    #   - /dev/fuse:/dev/fuse
+    # security_opt:
+    #   - apparmor:unconfined
     ports:
       - "8115:8115"
     volumes:
@@ -13,6 +22,8 @@ services:
       - ./data:/data
       # Cookie 文件存储
       - ./cookies:/root/.strm_gateway
+      # FUSE 挂载点 (需要 shared 传播模式)
+      - ./mnt:/mnt:shared
     environment:
       # 服务配置
       - GATEWAY_HOST=0.0.0.0
@@ -24,7 +35,8 @@ services:
 
       # STRM 基础 URL (修改为你的实际地址)
       - STRM_BASE_URL=http://your-server-ip:8115/stream
-
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=123456
       # 日志级别
       - LOG_LEVEL=INFO
 
