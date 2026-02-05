@@ -284,7 +284,7 @@ export function MountManager() {
                       <SelectTrigger>
                         <SelectValue placeholder="请选择要挂载的网盘" />
                       </SelectTrigger>
-                      <SelectContent position="popper" className="z-50">
+                      <SelectContent className="z-50">
                         {drives.map(drive => (
                           <SelectItem key={drive.drive_id} value={drive.drive_id}>
                             {drive.name}
