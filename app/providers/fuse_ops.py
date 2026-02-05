@@ -4,6 +4,7 @@ import errno
 import time
 import logging
 import threading
+import sys
 from typing import Dict, Any, Optional, List
 
 import httpx
@@ -22,6 +23,13 @@ from p115client import P115Client
 
 # 配置日志
 logger = logging.getLogger("strm_fuse")
+
+
+def fuse_log(level: str, message: str):
+    """FUSE 日志输出（确保在子进程中也能看到）"""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{timestamp} - FUSE - {level} - {message}", flush=True)
+    sys.stdout.flush()
 
 class P115FuseOperations(LoggingMixIn, Operations):
     """
@@ -176,13 +184,15 @@ class P115FuseOperations(LoggingMixIn, Operations):
             # 同步调用 p115client
             # 注意：p115client 的 fs_files 默认 limit 较小，这里需要分页获取所有文件
             # 为了简化，先获取前 10000 个，这通常够用了
+            fuse_log("INFO", f"Refreshing directory: path={path}, cid={cid}")
             resp = self.client.fs_files(cid, limit=10000)
 
             if not resp.get('state'):
-                logger.error(f"Failed to list files for cid {cid}: {resp.get('error')}")
+                fuse_log("ERROR", f"Failed to list files for cid {cid}: {resp.get('error')}")
                 return []
 
             files = resp.get('data', [])
+            fuse_log("INFO", f"Found {len(files)} items in {path}")
             names = []
 
             for item in files:
@@ -194,13 +204,9 @@ class P115FuseOperations(LoggingMixIn, Operations):
                 names.append(name)
 
                 # 解析文件信息
-                # fc: 0=文件夹, 1=视频, ...
-                is_dir = False
-                fc = item.get('fc')
-                if fc is not None:
-                    is_dir = int(fc) == 0
-                else:
-                    is_dir = not bool(item.get('sha'))
+                # 判断是否为目录：文件夹没有 sha 字段，文件有 sha 字段
+                sha = item.get('sha')
+                is_dir = not sha  # 没有 sha 就是目录
 
                 file_info = {
                     'id': str(item.get('cid')),
@@ -213,29 +219,38 @@ class P115FuseOperations(LoggingMixIn, Operations):
 
                 self._add_to_cache(child_path, file_info)
 
+            fuse_log("INFO", f"Cached {len(names)} items for {path}")
             return names
         except Exception as e:
-            logger.exception(f"Error listing dir {cid}: {e}")
+            fuse_log("ERROR", f"Error listing dir {cid}: {e}")
+            import traceback
+            fuse_log("ERROR", traceback.format_exc())
             return []
 
     def readdir(self, path: str, fh):
         """读取目录"""
+        fuse_log("INFO", f"readdir called: path={path}")
+
         # 检查缓存
         with self._lock:
             if path in self.children_cache:
                 names, expire = self.children_cache[path]
                 if time.time() < expire:
+                    fuse_log("INFO", f"readdir cache hit: {len(names)} items")
                     return ['.', '..'] + names
 
         info = self._get_file_info(path)
         if not info or not info.get('is_dir'):
+            fuse_log("WARNING", f"readdir: not a directory: {path}")
             raise FuseOSError(errno.ENOTDIR)
 
+        fuse_log("INFO", f"readdir: refreshing directory {path} (cid={info['id']})")
         names = self._refresh_dir(path, info['id'])
 
         with self._lock:
             self.children_cache[path] = (names, time.time() + self.cache_ttl)
 
+        fuse_log("INFO", f"readdir returning {len(names)} items for {path}")
         return ['.', '..'] + names
 
     def open(self, path: str, flags):

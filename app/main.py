@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from tortoise import Tortoise
 
 from app.core.config import get_settings
-from app.api.routes import drive, auth, file, task, stream, system, scheduler as scheduler_router, mount
+from app.api.routes import drive, auth, file, task, stream, system, scheduler as scheduler_router, mount, webdav
 from app.api.routes.file import compat_router as file_compat_router
 from app.tasks.scheduler import scheduler
 from app.services.mount_service import mount_service
@@ -155,6 +155,7 @@ def create_app() -> FastAPI:
     app.include_router(system.router, prefix="/api")
     app.include_router(scheduler_router.router, prefix="/api")
     app.include_router(mount.router, prefix="/api")
+    app.include_router(webdav.router)  # WebDAV 服务 (无需 FUSE)
 
     # 挂载前端静态文件 (如果存在)
     static_dir = Path(__file__).parent.parent / "static"
