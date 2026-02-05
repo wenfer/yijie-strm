@@ -565,6 +565,86 @@ export async function getSystemLogs(lines: number = 100): Promise<{ success: boo
 }
 
 /**
+ * 挂载配置
+ */
+export interface Mount {
+  id: string
+  drive_id: string
+  mount_point: string
+  mount_config: Record<string, any>
+  is_mounted: boolean
+  created_at: number
+}
+
+/**
+ * 获取挂载列表
+ */
+export async function listMounts(): Promise<Mount[]> {
+  return request<Mount[]>('/api/mounts')
+}
+
+/**
+ * 创建挂载点
+ */
+export async function createMount(data: {
+  drive_id: string
+  mount_point: string
+  mount_config?: Record<string, any>
+}): Promise<Mount> {
+  return request<Mount>('/api/mounts', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * 启动挂载
+ */
+export async function startMount(mount_id: string): Promise<{
+  success: boolean;
+  message: string;
+  pid?: number;
+  pending?: boolean;
+  logs: { timestamp: string; level: string; message: string }[];
+  error?: string;
+}> {
+  return request(`/api/mounts/${mount_id}/mount`, {
+    method: 'POST',
+  })
+}
+
+/**
+ * 停止挂载
+ */
+export async function stopMount(mount_id: string): Promise<{
+  success: boolean;
+  message: string;
+  logs: { timestamp: string; level: string; message: string }[];
+}> {
+  return request(`/api/mounts/${mount_id}/unmount`, {
+    method: 'POST',
+  })
+}
+
+/**
+ * 获取挂载日志
+ */
+export async function getMountLogs(mount_id: string, limit: number = 100): Promise<{
+  logs: { timestamp: string; level: string; message: string }[];
+}> {
+  return request(`/api/mounts/${mount_id}/logs?limit=${limit}`)
+}
+
+/**
+ * 删除挂载配置
+ */
+export async function deleteMount(mount_id: string): Promise<{ success: boolean; message: string }> {
+  return request(`/api/mounts/${mount_id}`, {
+    method: 'DELETE',
+  })
+}
+
+/**
  * API 命名空间对象（用于兼容旧的导入方式）
  */
 export const api = {
@@ -601,6 +681,12 @@ export const api = {
   getSystemConfig,
   saveSystemConfig,
   getSystemLogs,
+  listMounts,
+  createMount,
+  startMount,
+  stopMount,
+  deleteMount,
+  getMountLogs,
 }
 
 export default api

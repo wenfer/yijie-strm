@@ -180,10 +180,10 @@ class DriveService:
     async def check_authenticated(self, drive_id: str) -> bool:
         """
         检查网盘是否已认证
-        
+
         Args:
             drive_id: 网盘 ID
-            
+
         Returns:
             是否已认证
         """
@@ -193,3 +193,27 @@ class DriveService:
         except Exception as e:
             logger.warning(f"Failed to check authentication: {e}")
             return False
+
+    async def reset_auth(self, drive_id: str) -> bool:
+        """
+        重置认证状态（删除 Cookie）
+
+        Args:
+            drive_id: 网盘 ID
+
+        Returns:
+            是否成功
+        """
+        drive = await self.get_drive(drive_id)
+
+        # 关闭并移除 Provider
+        await provider_manager.remove_provider(drive_id)
+
+        # 删除 Cookie 文件
+        if drive.cookie_file:
+            cookie_path = Path(drive.cookie_file)
+            if cookie_path.exists():
+                cookie_path.unlink()
+
+        logger.info(f"Reset auth for drive: {drive_id}")
+        return True

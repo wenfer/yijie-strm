@@ -26,6 +26,7 @@ class FileInfo:
     pick_code: Optional[str] = None
     sha1: Optional[str] = None
     path: str = ""
+    time: int = 0
 
 
 class P115Provider:
@@ -416,6 +417,13 @@ class P115Provider:
         # 获取父目录 ID
         pid = item.get("pid", parent_id)
 
+        # 获取修改时间
+        time_str = item.get("t", "0")
+        try:
+            timestamp = int(time_str)
+        except (ValueError, TypeError):
+            timestamp = 0
+
         return FileInfo(
             id=file_id,
             name=name,
@@ -424,6 +432,7 @@ class P115Provider:
             parent_id=str(pid),
             pick_code=pick_code,
             sha1=sha1,
+            time=timestamp,
         )
 
     def is_video_file(self, filename: str) -> bool:

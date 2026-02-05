@@ -186,7 +186,21 @@ async def execute_task(
         
         # 获取 provider
         provider = await drive_service.get_provider(task.drive_id)
-        
+
+        # 检查认证状态
+        if not await provider.is_authenticated():
+            # 如果认证失效，自动重置认证状态
+            try:
+                await drive_service.reset_auth(task.drive_id)
+                logger.info(f"Drive {task.drive_id} authentication expired, reset auth status")
+            except Exception as e:
+                logger.error(f"Failed to reset auth for drive {task.drive_id}: {e}")
+
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="网盘未认证或认证已过期，请重新扫码登录"
+            )
+
         # 创建 file_service 和 strm_service
         from app.services.file_service import FileService
         from app.services.strm_service import StrmService

@@ -63,11 +63,18 @@ async def get_file_service(
     
     # 检查认证状态
     if not await provider.is_authenticated():
+        # 如果认证失效，自动重置认证状态
+        try:
+            await drive_service.reset_auth(drive_id)
+            logger.info(f"Drive {drive_id} authentication expired, reset auth status")
+        except Exception as e:
+            logger.error(f"Failed to reset auth for drive {drive_id}: {e}")
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="网盘未认证或认证已过期"
+            detail="网盘未认证或认证已过期，请重新扫码登录"
         )
-    
+
     return FileService(provider)
 
 

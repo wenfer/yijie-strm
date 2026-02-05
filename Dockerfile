@@ -30,10 +30,12 @@ LABEL org.opencontainers.image.licenses=MIT
 # 设置工作目录
 WORKDIR /app
 
-# 安装系统依赖
+# 安装系统依赖 (包括 FUSE 支持)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
+    libfuse2 \
+    fuse \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件

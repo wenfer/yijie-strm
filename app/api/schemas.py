@@ -222,8 +222,18 @@ class TaskStatistics(BaseModel):
 
 # ==================== 调度器相关 ====================
 
-class SchedulerStatus(BaseModel):
-    """调度器状态响应"""
-    running: bool
-    tasks_count: int
-    active_tasks: List[str]
+
+# ==================== 挂载相关 ====================
+
+class MountCreate(BaseModel):
+    drive_id: str = Field(..., description="网盘ID")
+    mount_point: str = Field(..., description="挂载点路径")
+    mount_config: Optional[Dict[str, Any]] = Field(default={}, description="挂载配置")
+
+class MountResponse(BaseModel):
+    id: str
+    drive_id: str
+    mount_point: str
+    mount_config: Dict[str, Any]
+    is_mounted: bool
+    created_at: float

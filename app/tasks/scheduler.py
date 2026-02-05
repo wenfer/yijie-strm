@@ -188,8 +188,18 @@ class TaskScheduler:
             # 获取服务
             settings = get_settings()
             drive_service = DriveService(settings.data_dir)
-            
+
             provider = await drive_service.get_provider(task.drive_id)
+
+            # 检查认证状态
+            if not await provider.is_authenticated():
+                logger.error(f"Task {task_id} skipped: Drive {task.drive_id} not authenticated")
+                try:
+                    await drive_service.reset_auth(task.drive_id)
+                except Exception as e:
+                    logger.error(f"Failed to reset auth for drive {task.drive_id}: {e}")
+                return
+
             file_service = FileService(provider)
             strm_service = StrmService(
                 file_service=file_service,

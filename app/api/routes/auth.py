@@ -199,26 +199,20 @@ async def logout(drive_id: str):
     """退出登录（清除 Cookie）"""
     try:
         from app.models.drive import Drive
-        
+
         drive = await Drive.filter(id=drive_id).first()
         if not drive:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"网盘不存在: {drive_id}"
             )
-        
-        # 删除 cookie 文件
-        if drive.cookie_file:
-            cookie_path = Path(drive.cookie_file)
-            if cookie_path.exists():
-                cookie_path.unlink()
-        
-        # 移除 provider
-        from app.providers.p115 import provider_manager
-        await provider_manager.remove_provider(drive_id)
-        
+
+        # 使用 DriveService 的 reset_auth 方法
+        drive_service = get_drive_service()
+        await drive_service.reset_auth(drive_id)
+
         return ResponseBase(message="退出成功")
-        
+
     except HTTPException:
         raise
     except Exception as e:
