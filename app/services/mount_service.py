@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from app.models.mount import Mount
-from app.providers.fuse_ops import P115FuseOperations, HAS_FUSE, FUSE
+from app.providers.fuse_ops import HAS_FUSE, create_fuse_instance, mount_fuse
 
 logger = logging.getLogger(__name__)
 
@@ -70,32 +70,45 @@ def run_fuse_process(cookie_file: str, mount_point: str, config: dict, message_q
     """
     FUSE 进程入口函数
     使用 message_queue 与父进程通信
+    使用 p115client 官方的 p115fuse 模块
     """
     def send_log(level: str, message: str):
         message_queue.put({"type": "log", "level": level, "message": message})
 
     if not HAS_FUSE:
-        send_log("ERROR", "FUSE library not found. Cannot start mount.")
-        message_queue.put({"type": "status", "status": "failed", "error": "FUSE library not found"})
+        send_log("ERROR", "p115fuse library not found. Cannot start mount.")
+        message_queue.put({"type": "status", "status": "failed", "error": "p115fuse library not found"})
         return
 
     try:
         # 配置日志
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
 
         # 确保挂载点存在
         send_log("INFO", f"Creating mount point: {mount_point}")
         os.makedirs(mount_point, exist_ok=True)
 
-        # 实例化 Operations
+        # 获取配置
         root_cid = config.get('root_cid', "0")
-        send_log("INFO", f"Initializing FUSE operations with root_cid={root_cid}")
+        allow_other = config.get('allow_other', False)
 
+        send_log("INFO", f"Creating FUSE instance:")
+        send_log("INFO", f"  cookie_file: {cookie_file}")
+        send_log("INFO", f"  mount_point: {mount_point}")
+        send_log("INFO", f"  root_cid: {root_cid}")
+        send_log("INFO", f"  allow_other: {allow_other}")
+
+        # 创建 FUSE 实例
         try:
-            ops = P115FuseOperations(cookie_file, mount_point, root_cid=root_cid)
-            send_log("INFO", "FUSE operations initialized successfully")
+            ops = create_fuse_instance(cookie_file, root_cid)
+            if ops is None:
+                raise Exception("Failed to create FUSE instance")
+            send_log("INFO", "FUSE instance created successfully")
         except Exception as e:
-            send_log("ERROR", f"Failed to initialize FUSE operations: {e}")
+            send_log("ERROR", f"Failed to create FUSE instance: {e}")
             import traceback
             tb = traceback.format_exc()
             for line in tb.split('\n'):
@@ -104,18 +117,24 @@ def run_fuse_process(cookie_file: str, mount_point: str, config: dict, message_q
             message_queue.put({"type": "status", "status": "failed", "error": str(e)})
             return
 
-        # 启动 FUSE
-        allow_other = config.get('allow_other', False)
-        fs_args = {'foreground': True, 'allow_other': allow_other}
-
-        if platform.system() == 'Darwin':
-            fs_args['nothreads'] = True  # macOS 上可能需要
-
-        send_log("INFO", f"Starting FUSE on {mount_point} (PID: {os.getpid()})")
+        # 启动 FUSE 挂载
+        send_log("INFO", f"Starting FUSE mount on {mount_point} (PID: {os.getpid()})")
         message_queue.put({"type": "status", "status": "running"})
 
-        # 启动 FUSE (这会阻塞)
-        FUSE(ops, mount_point, **fs_args)
+        # 使用 p115fuse 的 run_forever 方法
+        mount_kwargs = {
+            "foreground": True,
+            "max_readahead": 0,
+            "noauto_cache": True,
+            "allow_other": allow_other,
+        }
+
+        # macOS 特殊处理
+        if platform.system() == 'Darwin':
+            mount_kwargs["nothreads"] = True
+
+        send_log("INFO", f"Mount options: {mount_kwargs}")
+        mount_fuse(ops, mount_point, **mount_kwargs)
 
         # FUSE 正常退出
         send_log("INFO", "FUSE process exited normally")
