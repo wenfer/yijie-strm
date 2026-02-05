@@ -34,8 +34,6 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
-    libfuse2 \
-    libfuse3-3 \
     fuse3 \
     && rm -rf /var/lib/apt/lists/*
 
