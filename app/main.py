@@ -21,6 +21,8 @@ from app.api.routes import drive, auth, file, task, stream, system, scheduler as
 from app.api.routes.file import compat_router as file_compat_router
 from app.tasks.scheduler import scheduler
 from app.services.mount_service import mount_service
+from app.core.security import initialize_security
+from app.api.routes.auth import set_admin_credentials
 
 # 获取配置
 settings = get_settings()
@@ -47,6 +49,13 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# 初始化安全配置（生成随机密码如果需要）
+_admin_username, _admin_password = initialize_security(
+    settings.security.username,
+    settings.security.password
+)
+set_admin_credentials(_admin_username, _admin_password)
 
 
 async def init_tortoise():

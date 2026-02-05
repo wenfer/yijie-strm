@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   FolderOpen,
   Settings,
@@ -13,7 +14,10 @@ import {
   Moon,
   ChevronRight,
   Database,
+  LogOut,
+  Loader2,
 } from "lucide-react"
+import { getCurrentUser, logout } from "@/lib/api"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -95,11 +99,14 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [theme, setTheme] = useState<Theme>("light")
   const [mounted, setMounted] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [authenticated, setAuthenticated] = useState(false)
 
-  // Initialize theme from localStorage
+  // Initialize theme from localStorage and check auth
   useEffect(() => {
     setMounted(true)
     const savedTheme = localStorage.getItem("theme") as Theme
@@ -110,7 +117,35 @@ export default function DashboardLayout({
       setTheme("dark")
       document.documentElement.classList.add("dark")
     }
+
+    // Check authentication
+    checkAuth()
   }, [])
+
+  const checkAuth = async () => {
+    try {
+      const result = await getCurrentUser()
+      if (result.success && result.data?.is_authenticated) {
+        setAuthenticated(true)
+      } else {
+        router.push("/login")
+      }
+    } catch (err) {
+      router.push("/login")
+    } finally {
+      setAuthChecked(true)
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.push("/login")
+      router.refresh()
+    } catch (err) {
+      console.error("Logout failed:", err)
+    }
+  }
 
   // Toggle theme
   const toggleTheme = () => {
@@ -122,8 +157,16 @@ export default function DashboardLayout({
 
   const currentNavItem = navItems.find((item) => pathname?.startsWith(item.href))
 
-  // Prevent hydration mismatch
-  if (!mounted) {
+  // Prevent hydration mismatch and wait for auth check
+  if (!mounted || !authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (!authenticated) {
     return null
   }
 
@@ -282,6 +325,25 @@ export default function DashboardLayout({
             </div>
             {sidebarOpen && (
               <span className="text-sm text-muted-foreground">收起侧边栏</span>
+            )}
+          </button>
+
+          {/* Logout */}
+          <button
+            onClick={handleLogout}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-3 rounded-xl",
+              "bg-red-500/10 hover:bg-red-500/20",
+              "transition-all duration-300 ease-out",
+              "hover:scale-[1.02] active:scale-[0.98]",
+              !sidebarOpen && "justify-center px-2"
+            )}
+          >
+            <div className="flex items-center justify-center w-10 h-10 rounded-lg">
+              <LogOut className="h-5 w-5 text-red-500" />
+            </div>
+            {sidebarOpen && (
+              <span className="text-sm text-red-500 font-medium">退出登录</span>
             )}
           </button>
         </div>

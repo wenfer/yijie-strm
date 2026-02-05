@@ -2,7 +2,7 @@
  * Yijie STRM Gateway API 客户端
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8115'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ''
 
 export interface ApiResponse<T = any> {
   success?: boolean
@@ -120,6 +120,32 @@ async function request<T = any>(
  */
 export async function checkHealth(): Promise<HealthResponse> {
   return request<HealthResponse>('/api/system/health')
+}
+
+/**
+ * 登录
+ */
+export async function login(username: string, password: string): Promise<{ success: boolean; message?: string }> {
+  return request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+/**
+ * 退出登录
+ */
+export async function logout(): Promise<{ success: boolean; message?: string }> {
+  return request('/api/auth/logout', {
+    method: 'POST',
+  })
+}
+
+/**
+ * 获取当前登录用户信息
+ */
+export async function getCurrentUser(): Promise<{ success: boolean; data?: { is_authenticated: boolean } }> {
+  return request('/api/auth/me')
 }
 
 /**
@@ -650,6 +676,9 @@ export async function deleteMount(mount_id: string): Promise<{ success: boolean;
 export const api = {
   health: checkHealth,
   checkHealth,
+  login,
+  logout,
+  getCurrentUser,
   getAuthQRCode,
   checkAuthStatus,
   exchangeToken,

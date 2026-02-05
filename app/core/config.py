@@ -50,7 +50,7 @@ class GatewaySettings(BaseSettings):
 class LogSettings(BaseSettings):
     """日志配置"""
     model_config = SettingsConfigDict(env_prefix="LOG_")
-    
+
     level: str = Field(default="INFO", alias="LOG_LEVEL")
     format: str = Field(
         default="%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
@@ -58,18 +58,37 @@ class LogSettings(BaseSettings):
     )
 
 
+class SecuritySettings(BaseSettings):
+    """安全认证配置"""
+    model_config = SettingsConfigDict(env_prefix="SECURITY_")
+
+    # 管理员账号
+    username: str = Field(default="admin", alias="ADMIN_USERNAME")
+    # 管理员密码（未配置时自动生成）
+    password: Optional[str] = Field(default=None, alias="ADMIN_PASSWORD")
+    # JWT 密钥（未配置时自动生成）
+    secret_key: str = Field(default="", alias="JWT_SECRET_KEY")
+    # JWT 算法
+    algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    # Token 过期时间（分钟）
+    access_token_expire_minutes: int = Field(default=60 * 24 * 7, alias="JWT_EXPIRE_MINUTES")  # 默认7天
+
+
 class Settings(BaseSettings):
     """应用配置"""
-    
+
     # 数据库配置
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
-    
+
     # 网关配置
     gateway: GatewaySettings = Field(default_factory=GatewaySettings)
-    
+
     # 日志配置
     log: LogSettings = Field(default_factory=LogSettings)
-    
+
+    # 安全配置
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
+
     # 数据目录
     data_dir: Path = Field(default=Path.home() / ".strm_gateway", alias="DATA_DIR")
 

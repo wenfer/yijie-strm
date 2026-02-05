@@ -29,7 +29,8 @@ app/                              # FastAPI 应用主目录
 ├── core/                        # 核心模块
 │   ├── __init__.py
 │   ├── config.py                # Pydantic Settings 配置
-│   └── exceptions.py            # 异常定义
+│   ├── exceptions.py            # 异常定义
+│   └── security.py              # 安全认证工具
 ├── models/                      # Tortoise ORM 数据模型
 │   ├── __init__.py
 │   ├── drive.py                 # 网盘模型
@@ -82,6 +83,7 @@ lib/                              # 旧版本代码 (废弃)
 - **任务调度**: APScheduler 3.10+
 - **配置**: Pydantic Settings
 - **数据库**: SQLite (默认) / MySQL / PostgreSQL
+- **登录认证**: 简单的 session/cookie 方式
 
 ### 前端
 - **框架**: Next.js 14
@@ -133,7 +135,10 @@ python run.py --debug
 | `/api/auth/qrcode` | GET | 获取二维码 |
 | `/api/auth/status` | GET | 检查认证状态 |
 | `/api/auth/exchange` | POST | 交换 Token |
-| `/api/auth/logout/{drive_id}` | POST | 退出登录 |
+| `/api/auth/logout/{drive_id}` | POST | 退出登录（115网盘） |
+| `/api/auth/login` | POST | 用户登录（表单提交） |
+| `/api/auth/logout` | POST | 用户退出登录 |
+| `/api/auth/me` | GET | 获取当前用户信息 |
 
 ### 网盘管理
 | 端点 | 方法 | 说明 |
@@ -239,7 +244,26 @@ data_dir: "~/.strm_gateway"
 |------|--------|------|
 | `LOG_LEVEL` | `INFO` | 日志级别 |
 
+### 安全配置
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `ADMIN_USERNAME` | `admin` | 管理员用户名 |
+| `ADMIN_PASSWORD` | - | 管理员密码（未配置时自动生成并打印） |
+
+**注意**: 如果未配置 `ADMIN_PASSWORD`，启动时会自动生成一个随机密码并打印到日志中。
+
 ## 认证流程
+
+### 账号密码登录
+
+系统支持简单的 session/cookie 登录：
+
+1. **登录**: `POST /api/auth/login`
+   - JSON 参数: `{"username": "admin", "password": "xxx"}`
+   - 成功后会自动设置 `session_id` cookie
+2. **获取用户信息**: `GET /api/auth/me`
+   - 需要携带 cookie
+3. **退出登录**: `POST /api/auth/logout`
 
 基于 p115client 的扫码登录模式:
 

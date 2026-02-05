@@ -1,31 +1,94 @@
 """
 认证管理 API 路由
-
-基于 p115client 的授权码登录流程
 """
 import logging
 from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 
 from app.api.schemas import AuthExchange, DataResponse, ResponseBase
 from app.services.drive_service import DriveService
 from app.core.config import get_settings
+from app.core.security import (
+    verify_credentials, create_session, delete_session, require_auth,
+    set_admin_credentials as _set_admin_credentials
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["认证管理"])
 
-# 存储正在进行的认证会话
-# 实际生产环境应该使用 Redis 等分布式存储
+# 存储正在进行的 115 认证会话
 _auth_sessions = {}
+
+
+def set_admin_credentials(username: str, password: str):
+    """设置管理员凭据（在应用启动时调用）"""
+    _set_admin_credentials(username, password)
 
 
 def get_drive_service() -> DriveService:
     """获取 DriveService 实例"""
     settings = get_settings()
     return DriveService(settings.data_dir)
+
+
+@router.post("/login")
+async def login(request: Request, response: Response):
+    """
+    用户登录
+    提交 JSON: {"username": "xxx", "password": "xxx"}
+    成功后会设置 session cookie
+    """
+    try:
+        data = await request.json()
+        username = data.get("username", "")
+        password = data.get("password", "")
+
+        if not verify_credentials(username, password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="用户名或密码错误"
+            )
+
+        # 创建 session
+        session_id = create_session()
+        response.set_cookie(
+            key="session_id",
+            value=session_id,
+            httponly=True,
+            secure=False,  # 生产环境建议改为 True (HTTPS)
+            samesite="lax",
+            max_age=60 * 60 * 24 * 7  # 7天
+        )
+
+        return {"success": True, "message": "登录成功"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Login failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"登录失败: {str(e)}"
+        )
+
+
+@router.post("/logout")
+async def logout(request: Request, response: Response):
+    """退出登录，清除 session"""
+    session_id = request.cookies.get("session_id")
+    if session_id:
+        delete_session(session_id)
+        response.delete_cookie("session_id")
+    return {"success": True, "message": "退出成功"}
+
+
+@router.get("/me")
+async def get_current_user_info(user: dict = Depends(require_auth)):
+    """获取当前登录用户信息"""
+    return {"success": True, "data": {"is_authenticated": True}}
 
 
 @router.get("/qrcode")

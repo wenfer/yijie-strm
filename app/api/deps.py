@@ -2,7 +2,7 @@
 API 依赖注入模块
 """
 from typing import Optional
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 
 from app.core.config import Settings, get_settings
 from app.services.drive_service import DriveService
