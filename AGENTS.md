@@ -44,6 +44,8 @@ app/                              # FastAPI 应用主目录
 │       ├── drive.py             # 网盘管理路由
 │       ├── file.py              # 文件操作路由
 │       ├── task.py              # 任务管理路由
+│       ├── offline.py           # 云下载路由
+│       ├── clouddrive2.py       # CloudDrive2兼容接口
 │       ├── stream.py            # 流媒体路由
 │       └── system.py            # 系统路由
 ├── providers/                   # 网盘 Provider
@@ -61,9 +63,27 @@ app/                              # FastAPI 应用主目录
     └── executor.py              # 任务执行器
 
 web/                              # Next.js 前端项目
-├── app/                         # App Router
-├── components/                  # React 组件
-├── lib/                         # 工具函数
+├── src/
+│   ├── app/                     # App Router
+│   │   ├── dashboard/
+│   │   │   ├── browser/         # 文件浏览
+│   │   │   ├── drives/          # 网盘管理
+│   │   │   ├── offline/         # 云下载
+│   │   │   ├── tasks/           # 任务管理
+│   │   │   ├── records/         # 记录管理
+│   │   │   └── settings/        # 系统设置
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   └── login/
+│   ├── components/              # React 组件
+│   │   ├── ui/                  # shadcn/ui 组件
+│   │   ├── file-browser.tsx
+│   │   ├── drive-manager.tsx
+│   │   ├── task-manager.tsx
+│   │   └── ...
+│   └── lib/                     # 工具函数
+│       ├── api.ts               # API 客户端
+│       └── utils.ts
 └── package.json
 
 docs/                             # p115client 文档
@@ -173,6 +193,50 @@ python run.py --debug
 | `/api/tasks/{task_id}/statistics` | GET | 任务统计 |
 | `/api/tasks/{task_id}/logs` | GET | 任务日志 |
 | `/api/tasks/{task_id}/records` | GET | STRM 记录 |
+
+### 云下载 (离线)
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/offline/list` | GET | 获取云下载任务列表 |
+| `/api/offline/add-url` | POST | 添加 URL 下载任务 |
+| `/api/offline/add-urls` | POST | 批量添加下载任务 |
+| `/api/offline/add-torrent` | POST | 添加种子下载任务 |
+| `/api/offline/remove` | POST | 删除下载任务 |
+| `/api/offline/clear` | POST | 清空下载任务 |
+| `/api/offline/restart` | POST | 重启下载任务 |
+| `/api/offline/quota` | GET | 获取配额信息 |
+| `/api/offline/count` | GET | 获取任务数量统计 |
+| `/api/offline/download-path` | GET/POST | 获取/设置默认保存路径 |
+
+前端页面: `/dashboard/offline`
+
+### CloudDrive2 兼容接口
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/files/offsline/download` | POST | 添加离线下载任务(兼容CD2) |
+| `/api/files/offline_download` | POST | 添加离线下载任务(兼容CD2备选) |
+| `/api/files/offsline/list` | GET | 获取离线任务列表(兼容CD2) |
+| `/api/files/offline_list` | GET | 获取离线任务列表(兼容CD2备选) |
+| `/api/files/offsline/remove` | DELETE | 删除离线任务(兼容CD2) |
+| `/api/files/offline_remove` | DELETE | 删除离线任务(兼容CD2备选) |
+| `/api/files/offsline/clear` | GET | 清空离线任务(兼容CD2) |
+| `/api/files/offline_clear` | GET | 清空离线任务(兼容CD2备选) |
+| `/cd2/offline_download` | POST | 添加离线下载任务(简化路径) |
+| `/cd2/offline_list` | GET | 获取离线任务列表(简化路径) |
+
+**使用说明**：
+将其他系统中 CloudDrive2 的服务地址替换为 `http://your-server:8115` 即可使用 115 网盘的离线下载功能。
+
+**请求示例**：
+```bash
+curl -X POST http://localhost:8115/api/files/offsline/download \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "/downloads",
+    "url": "magnet:?xt=urn:btih:...",
+    "type": "0"
+  }'
+```
 
 ### 流媒体
 | 端点 | 方法 | 说明 |
@@ -371,6 +435,17 @@ data_dir: "~/.strm_gateway"
 - `files_updated`: 更新文件数
 - `files_deleted`: 删除文件数
 
+### OfflineTask (云下载任务) - API 模型
+- `info_hash`: 任务哈希
+- `name`: 任务名称
+- `size`: 文件大小
+- `status`: 状态 (0=等待, 1=下载中, 2=已完成, -1=失败)
+- `progress`: 下载进度 (0-100)
+- `speed`: 下载速度
+- `create_time`: 创建时间戳
+- `save_cid`: 保存目录 CID
+- `url`: 下载链接
+
 ## p115client 数据结构说明
 
 ### fs_files 返回格式
@@ -400,6 +475,24 @@ data_dir: "~/.strm_gateway"
 - 格式: `UID=xxx; CID=xxx; SEID=xxx; KID=xxx`
 - 编码: latin-1
 - 存储路径: `~/.strm_gateway/{drive_id}.txt`
+
+### 云下载任务字段
+| 字段 | 含义 | 说明 |
+|-----|------|------|
+| `info_hash` | 任务哈希 | 任务唯一标识 |
+| `name` | 任务名称 | 下载文件/文件夹名 |
+| `size` | 文件大小 | 字节 |
+| `status` | 任务状态 | 0=等待, 1=下载中, 2=已完成, -1=失败 |
+| `progress` | 下载进度 | 0-100 百分比 |
+| `speed` | 下载速度 | 字节/秒 |
+| `create_time` | 创建时间 | 时间戳 |
+| `save_cid` | 保存目录 | 目标文件夹 CID |
+| `url` | 下载链接 | 原始下载 URL |
+
+### 支持的下载链接类型
+- **HTTP/HTTPS**: 普通下载链接
+- **磁力链(magnet:)**: 如 `magnet:?xt=urn:btih:...`
+- **电驴(ed2k:)**: 如 `ed2k://|file|...`
 
 
 ## 文档更新，发现下列情况，需要及时更新此文档

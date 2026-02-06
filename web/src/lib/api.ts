@@ -671,6 +671,197 @@ export async function deleteMount(mount_id: string): Promise<{ success: boolean;
 }
 
 /**
+ * 云下载任务
+ */
+export interface OfflineTask {
+  info_hash: string
+  name: string
+  size: number
+  size_formatted: string
+  status: number
+  status_text: string
+  progress: number
+  speed: number
+  speed_formatted: string
+  create_time: number
+  create_time_formatted: string
+  update_time: number
+  update_time_formatted: string
+  save_cid?: string
+  url?: string
+  del_file: number
+}
+
+/**
+ * 云下载任务列表响应
+ */
+export interface OfflineListResponse {
+  success: boolean
+  page: number
+  per_page: number
+  total: number
+  tasks: OfflineTask[]
+}
+
+/**
+ * 云下载配额信息
+ */
+export interface OfflineQuotaInfo {
+  total: number
+  used: number
+  remaining: number
+  total_formatted: string
+  used_formatted: string
+  remaining_formatted: string
+}
+
+/**
+ * 云下载任务数量统计
+ */
+export interface OfflineTaskCount {
+  total: number
+  downloading: number
+  completed: number
+  failed: number
+  pending: number
+}
+
+/**
+ * 云下载默认路径
+ */
+export interface OfflineDownloadPath {
+  cid: string
+  name: string
+  path: string
+}
+
+/**
+ * 获取云下载任务列表
+ */
+export async function getOfflineList(
+  page: number = 1,
+  per_page: number = 20,
+  drive_id?: string
+): Promise<OfflineListResponse> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    per_page: per_page.toString(),
+  })
+  if (drive_id) params.append('drive_id', drive_id)
+  return request(`/api/offline/list?${params}`)
+}
+
+/**
+ * 添加 URL 云下载任务
+ */
+export async function addOfflineUrl(
+  url: string,
+  save_cid?: string,
+  drive_id?: string
+): Promise<{ success: boolean; message: string; data?: { info_hash: string; name: string } }> {
+  const params = drive_id ? new URLSearchParams({ drive_id }) : ''
+  return request(`/api/offline/add-url${params ? '?' + params : ''}`, {
+    method: 'POST',
+    body: JSON.stringify({ url, save_cid }),
+  })
+}
+
+/**
+ * 批量添加 URL 云下载任务
+ */
+export async function addOfflineUrls(
+  urls: string[],
+  save_cid?: string,
+  drive_id?: string
+): Promise<{ success: boolean; message: string; data?: { total: number; success: number; failed: number } }> {
+  const params = drive_id ? new URLSearchParams({ drive_id }) : ''
+  return request(`/api/offline/add-urls${params ? '?' + params : ''}`, {
+    method: 'POST',
+    body: JSON.stringify({ urls, save_cid }),
+  })
+}
+
+/**
+ * 删除云下载任务
+ */
+export async function removeOfflineTasks(
+  info_hashes: string[],
+  drive_id?: string
+): Promise<{ success: boolean; message: string }> {
+  const params = drive_id ? new URLSearchParams({ drive_id }) : ''
+  return request(`/api/offline/remove${params ? '?' + params : ''}`, {
+    method: 'POST',
+    body: JSON.stringify({ info_hashes }),
+  })
+}
+
+/**
+ * 清空云下载任务
+ */
+export async function clearOfflineTasks(
+  status: number = 0,
+  drive_id?: string
+): Promise<{ success: boolean; message: string }> {
+  const params = drive_id ? new URLSearchParams({ drive_id }) : ''
+  return request(`/api/offline/clear${params ? '?' + params : ''}`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  })
+}
+
+/**
+ * 重启云下载任务
+ */
+export async function restartOfflineTask(
+  info_hash: string,
+  drive_id?: string
+): Promise<{ success: boolean; message: string }> {
+  const params = drive_id ? new URLSearchParams({ drive_id }) : ''
+  return request(`/api/offline/restart${params ? '?' + params : ''}`, {
+    method: 'POST',
+    body: JSON.stringify({ info_hash }),
+  })
+}
+
+/**
+ * 获取云下载配额信息
+ */
+export async function getOfflineQuota(drive_id?: string): Promise<{ success: boolean; data: OfflineQuotaInfo }> {
+  const params = drive_id ? new URLSearchParams({ drive_id }) : ''
+  return request(`/api/offline/quota${params ? '?' + params : ''}`)
+}
+
+/**
+ * 获取云下载任务数量统计
+ */
+export async function getOfflineCount(drive_id?: string): Promise<{ success: boolean; data: OfflineTaskCount }> {
+  const params = drive_id ? new URLSearchParams({ drive_id }) : ''
+  return request(`/api/offline/count${params ? '?' + params : ''}`)
+}
+
+/**
+ * 获取云下载默认路径
+ */
+export async function getOfflineDownloadPath(drive_id?: string): Promise<{ success: boolean; data: OfflineDownloadPath }> {
+  const params = drive_id ? new URLSearchParams({ drive_id }) : ''
+  return request(`/api/offline/download-path${params ? '?' + params : ''}`)
+}
+
+/**
+ * 设置云下载默认路径
+ */
+export async function setOfflineDownloadPath(
+  cid: string,
+  drive_id?: string
+): Promise<{ success: boolean; message: string }> {
+  const params = drive_id ? new URLSearchParams({ drive_id }) : ''
+  return request(`/api/offline/download-path${params ? '?' + params : ''}`, {
+    method: 'POST',
+    body: JSON.stringify({ cid }),
+  })
+}
+
+/**
  * API 命名空间对象（用于兼容旧的导入方式）
  */
 export const api = {
@@ -716,6 +907,17 @@ export const api = {
   stopMount,
   deleteMount,
   getMountLogs,
+  // 云下载
+  getOfflineList,
+  addOfflineUrl,
+  addOfflineUrls,
+  removeOfflineTasks,
+  clearOfflineTasks,
+  restartOfflineTask,
+  getOfflineQuota,
+  getOfflineCount,
+  getOfflineDownloadPath,
+  setOfflineDownloadPath,
 }
 
 export default api

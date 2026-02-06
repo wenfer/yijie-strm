@@ -17,10 +17,10 @@ from fastapi.responses import FileResponse
 from tortoise import Tortoise
 
 from app.core.config import get_settings
-from app.api.routes import drive, auth, file, task, stream, system, scheduler as scheduler_router, mount, webdav
+from app.api.routes import drive, auth, file, task, stream, system, scheduler as scheduler_router, webdav, offline, clouddrive2
 from app.api.routes.file import compat_router as file_compat_router
 from app.tasks.scheduler import scheduler
-from app.services.mount_service import mount_service
+# from app.services.mount_service import mount_service  # 挂载功能已禁用
 from app.core.security import initialize_security
 from app.api.routes.auth import set_admin_credentials
 
@@ -70,7 +70,7 @@ async def init_tortoise():
 
     await Tortoise.init(
         db_url=database_url,
-        modules={"models": ["app.models", "app.models.mount"]}
+        modules={"models": ["app.models"]}
     )
 
     if settings.database.generate_schemas:
@@ -102,8 +102,8 @@ async def lifespan(app: FastAPI):
     # 启动调度器
     await scheduler.start()
 
-    # 恢复挂载
-    await mount_service.restore_mounts()
+    # 恢复挂载 (已禁用)
+    # await mount_service.restore_mounts()
 
     logger.info("STRM Gateway started successfully")
 
@@ -154,8 +154,11 @@ def create_app() -> FastAPI:
     app.include_router(stream.router)
     app.include_router(system.router, prefix="/api")
     app.include_router(scheduler_router.router, prefix="/api")
-    app.include_router(mount.router, prefix="/api")
+    app.include_router(offline.router, prefix="/api")  # 云下载
+    # 挂载路由已禁用
+    # app.include_router(mount.router, prefix="/api")
     app.include_router(webdav.router)  # WebDAV 服务 (无需 FUSE)
+    app.include_router(clouddrive2.router)  # CloudDrive2 兼容接口 (无需前缀，路由已包含完整路径)
 
     # 挂载前端静态文件 (如果存在)
     static_dir = Path(__file__).parent.parent / "static"

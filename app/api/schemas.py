@@ -237,3 +237,101 @@ class MountResponse(BaseModel):
     mount_config: Dict[str, Any]
     is_mounted: bool
     created_at: float
+
+
+# ==================== 云下载相关 ====================
+
+class OfflineTaskStatus:
+    """云下载任务状态"""
+    PENDING = 0      # 等待下载
+    DOWNLOADING = 1  # 下载中
+    COMPLETED = 2    # 已完成
+    FAILED = -1      # 失败
+    UNKNOWN = 3      # 未知
+
+
+class OfflineTaskItem(BaseModel):
+    """云下载任务项"""
+    info_hash: str = Field(..., description="任务哈希")
+    name: str = Field(..., description="任务名称")
+    size: int = Field(0, description="文件大小(字节)")
+    size_formatted: str = Field("", description="格式化大小")
+    status: int = Field(0, description="任务状态: 0=等待, 1=下载中, 2=已完成, -1=失败")
+    status_text: str = Field("", description="状态文本")
+    progress: float = Field(0.0, description="下载进度(0-100)")
+    speed: int = Field(0, description="下载速度(字节/秒)")
+    speed_formatted: str = Field("", description="格式化速度")
+    create_time: int = Field(0, description="创建时间戳")
+    create_time_formatted: str = Field("", description="格式化创建时间")
+    update_time: int = Field(0, description="更新时间戳")
+    update_time_formatted: str = Field("", description="格式化更新时间")
+    save_cid: Optional[str] = Field(None, description="保存目录CID")
+    url: Optional[str] = Field(None, description="下载链接")
+    del_file: int = Field(0, description="是否删除源文件")
+
+
+class OfflineListResponse(ResponseBase):
+    """云下载任务列表响应"""
+    page: int = Field(1, description="当前页码")
+    per_page: int = Field(20, description="每页数量")
+    total: int = Field(0, description="总任务数")
+    tasks: List[OfflineTaskItem] = Field([], description="任务列表")
+
+
+class OfflineAddUrlRequest(BaseModel):
+    """添加云下载任务请求"""
+    url: str = Field(..., description="下载链接(支持HTTP/HTTPS/磁力链/电驴等)")
+    save_cid: Optional[str] = Field(None, description="保存到的文件夹CID")
+
+
+class OfflineAddUrlsRequest(BaseModel):
+    """批量添加云下载任务请求"""
+    urls: List[str] = Field(..., description="下载链接列表")
+    save_cid: Optional[str] = Field(None, description="保存到的文件夹CID")
+
+
+class OfflineAddTorrentRequest(BaseModel):
+    """添加种子云下载任务请求"""
+    torrent_path: str = Field(..., description="种子文件路径")
+    save_cid: Optional[str] = Field(None, description="保存到的文件夹CID")
+
+
+class OfflineRemoveRequest(BaseModel):
+    """删除云下载任务请求"""
+    info_hashes: List[str] = Field(..., description="任务info_hash列表")
+
+
+class OfflineRestartRequest(BaseModel):
+    """重启云下载任务请求"""
+    info_hash: str = Field(..., description="任务info_hash")
+
+
+class OfflineClearRequest(BaseModel):
+    """清空云下载任务请求"""
+    status: int = Field(0, ge=0, le=2, description="0=已完成, 1=全部, 2=失败")
+
+
+class OfflineQuotaInfo(BaseModel):
+    """云下载配额信息"""
+    total: int = Field(0, description="总配额(字节)")
+    used: int = Field(0, description="已使用(字节)")
+    remaining: int = Field(0, description="剩余(字节)")
+    total_formatted: str = Field("", description="格式化总配额")
+    used_formatted: str = Field("", description="格式化已使用")
+    remaining_formatted: str = Field("", description="格式化剩余")
+
+
+class OfflineTaskCount(BaseModel):
+    """云下载任务数量统计"""
+    total: int = Field(0, description="总任务数")
+    downloading: int = Field(0, description="下载中")
+    completed: int = Field(0, description="已完成")
+    failed: int = Field(0, description="失败")
+    pending: int = Field(0, description="等待中")
+
+
+class OfflineDownloadPath(BaseModel):
+    """云下载默认路径"""
+    cid: str = Field("", description="文件夹CID")
+    name: str = Field("", description="文件夹名称")
+    path: str = Field("", description="完整路径")

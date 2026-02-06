@@ -509,6 +509,251 @@ class P115Provider:
                     pass
             return False
 
+    # ==================== 云下载（离线下载）相关方法 ====================
+
+    async def offline_list(
+            self,
+            page: int = 1,
+            per_page: int = 20,
+            **kwargs
+    ) -> Dict[str, Any]:
+        """
+        获取云下载任务列表
+
+        Args:
+            page: 页码
+            per_page: 每页数量
+
+        Returns:
+            云下载任务列表数据
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.offline_list(
+                {"page": page, "per_page": per_page, **kwargs},
+                async_=True
+            )
+            return resp
+        except Exception as e:
+            logger.exception(f"Error getting offline list: {e}")
+            return {"state": False, "error": str(e), "tasks": []}
+
+    async def offline_add_url(
+            self,
+            url: str,
+            save_cid: Optional[str] = None,
+            **kwargs
+    ) -> Dict[str, Any]:
+        """
+        添加 URL 云下载任务
+
+        Args:
+            url: 下载链接 (支持 HTTP/HTTPS/磁力链/电驴等)
+            save_cid: 保存到的文件夹 CID
+
+        Returns:
+            添加结果
+        """
+        client = await self._get_client()
+        try:
+            payload = {"url": url}
+            if save_cid:
+                payload["save_cid"] = save_cid
+            payload.update(kwargs)
+            resp = await client.offline_add_url(payload, async_=True)
+            return resp
+        except Exception as e:
+            logger.exception(f"Error adding offline URL: {e}")
+            return {"state": False, "error": str(e)}
+
+    async def offline_add_urls(
+            self,
+            urls: List[str],
+            save_cid: Optional[str] = None,
+            **kwargs
+    ) -> Dict[str, Any]:
+        """
+        批量添加 URL 云下载任务
+
+        Args:
+            urls: 下载链接列表
+            save_cid: 保存到的文件夹 CID
+
+        Returns:
+            添加结果
+        """
+        client = await self._get_client()
+        try:
+            payload = {"url": "\n".join(urls)}
+            if save_cid:
+                payload["save_cid"] = save_cid
+            payload.update(kwargs)
+            resp = await client.offline_add_urls(payload, async_=True)
+            return resp
+        except Exception as e:
+            logger.exception(f"Error adding offline URLs: {e}")
+            return {"state": False, "error": str(e)}
+
+    async def offline_add_torrent(
+            self,
+            torrent_path: str,
+            save_cid: Optional[str] = None,
+            **kwargs
+    ) -> Dict[str, Any]:
+        """
+        添加种子云下载任务
+
+        Args:
+            torrent_path: 种子文件路径
+            save_cid: 保存到的文件夹 CID
+
+        Returns:
+            添加结果
+        """
+        client = await self._get_client()
+        try:
+            payload = {"torrent_path": torrent_path}
+            if save_cid:
+                payload["save_cid"] = save_cid
+            payload.update(kwargs)
+            resp = await client.offline_add_torrent(payload, async_=True)
+            return resp
+        except Exception as e:
+            logger.exception(f"Error adding offline torrent: {e}")
+            return {"state": False, "error": str(e)}
+
+    async def offline_remove(
+            self,
+            info_hashes: List[str]
+    ) -> Dict[str, Any]:
+        """
+        删除云下载任务
+
+        Args:
+            info_hashes: 任务 info_hash 列表
+
+        Returns:
+            删除结果
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.offline_remove(
+                ",".join(info_hashes),
+                async_=True
+            )
+            return resp
+        except Exception as e:
+            logger.exception(f"Error removing offline tasks: {e}")
+            return {"state": False, "error": str(e)}
+
+    async def offline_clear(
+            self,
+            status: int = 0
+    ) -> Dict[str, Any]:
+        """
+        清空云下载任务
+
+        Args:
+            status: 0=已完成, 1=全部, 2=失败
+
+        Returns:
+            清空结果
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.offline_clear(status, async_=True)
+            return resp
+        except Exception as e:
+            logger.exception(f"Error clearing offline tasks: {e}")
+            return {"state": False, "error": str(e)}
+
+    async def offline_restart(
+            self,
+            info_hash: str
+    ) -> Dict[str, Any]:
+        """
+        重新启动云下载任务
+
+        Args:
+            info_hash: 任务 info_hash
+
+        Returns:
+            重启结果
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.offline_restart(info_hash, async_=True)
+            return resp
+        except Exception as e:
+            logger.exception(f"Error restarting offline task: {e}")
+            return {"state": False, "error": str(e)}
+
+    async def offline_quota_info(self) -> Dict[str, Any]:
+        """
+        获取云下载配额信息
+
+        Returns:
+            配额信息
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.offline_quota_info(async_=True)
+            return resp
+        except Exception as e:
+            logger.exception(f"Error getting offline quota info: {e}")
+            return {"state": False, "error": str(e)}
+
+    async def offline_task_count(self) -> Dict[str, Any]:
+        """
+        获取云下载任务数量统计
+
+        Returns:
+            任务数量统计
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.offline_task_count(async_=True)
+            return resp
+        except Exception as e:
+            logger.exception(f"Error getting offline task count: {e}")
+            return {"state": False, "error": str(e)}
+
+    async def offline_download_path(self) -> Dict[str, Any]:
+        """
+        获取云下载默认保存路径
+
+        Returns:
+            下载路径信息
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.offline_download_path(async_=True)
+            return resp
+        except Exception as e:
+            logger.exception(f"Error getting offline download path: {e}")
+            return {"state": False, "error": str(e)}
+
+    async def offline_download_path_set(
+            self,
+            cid: str
+    ) -> Dict[str, Any]:
+        """
+        设置云下载默认保存路径
+
+        Args:
+            cid: 文件夹 CID
+
+        Returns:
+            设置结果
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.offline_download_path_set(cid, async_=True)
+            return resp
+        except Exception as e:
+            logger.exception(f"Error setting offline download path: {e}")
+            return {"state": False, "error": str(e)}
+
 
 # Provider 管理器
 class ProviderManager:

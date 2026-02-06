@@ -32,6 +32,51 @@
                      └─────────────┘
 ```
 
+## API 接口
+
+### 基础接口
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/drives` | GET/POST | 网盘列表/创建网盘 |
+| `/api/files/list` | GET | 文件列表 |
+| `/api/tasks` | GET/POST | 任务列表/创建任务 |
+| `/stream/{pick_code}` | GET | 流媒体播放 |
+
+### 云下载接口
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/offline/list` | GET | 获取云下载任务列表 |
+| `/api/offline/add-url` | POST | 添加 URL 下载任务 |
+| `/api/offline/remove` | POST | 删除下载任务 |
+| `/api/offline/quota` | GET | 获取配额信息 |
+
+### CloudDrive2 兼容接口
+
+用于替换其他系统中 CloudDrive2 的离线下载服务地址。
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/files/offsline/download` | POST | 添加离线下载任务 |
+| `/api/files/offsline/list` | GET | 获取离线任务列表 |
+| `/api/files/offsline/remove` | DELETE | 删除离线任务 |
+| `/api/files/offsline/clear` | GET | 清空离线任务 |
+
+**使用示例**:
+
+```bash
+# 添加磁力链下载
+curl -X POST http://localhost:8115/api/files/offsline/download \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "/downloads",
+    "url": "magnet:?xt=urn:btih:..."
+  }'
+```
+
+将其他系统中 CloudDrive2 的地址 `http://clouddrive2:19798` 替换为本服务地址 `http://yijie-strm:8115` 即可。
+
 ## 许可证
 
 MIT License
